@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Tools that clean up an astronomy-heavy Zotero library against NASA SciX (the ADS API): merge duplicates, upgrade arXiv preprints to published metadata, add SciX/Publisher link attachments, replace ADS URLs with SciX URLs, and tidy arXiv vs. publisher PDFs. `README.md` (English) and `README.ja.md` (Japanese) are the user-facing docs; keep them in sync when behavior changes.
 
-There is no build system, no test suite, no package manifest, and no git history in this directory.
+There is no build system, no test suite, and no package manifest.
 
 ## Commands
 
