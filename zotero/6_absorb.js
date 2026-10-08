@@ -4,7 +4,7 @@
 // 6_absorb.js — Zotero Connector で保存した出版版を既存アイテムに統合する
 //   1. 直近 CFG.days 日に追加されたアイテムのうち、DOI が既存（より古い）アイテムと一致するものを探す
 //   2. 既存アイテムを残して統合（新アイテムのPDF・スナップショットは既存アイテムへ移る。メタデータは既存側を維持）
-//   3. 既存アイテムに出版版PDFがあれば、arXiv版PDFをゴミ箱へ（PDFに書き込み注釈があるものは残す）
+//   3. 既存アイテムに出版版PDFがあれば、arXiv版PDFをゴミ箱へ（注釈があるものは残す）
 //      タグ _scix:needs-pub-pdf を外し、_scix:pdf-published を付ける
 //
 // 実行方法: Run JavaScript（Run as async function にチェック）。まず dryRun:true で確認。
@@ -52,6 +52,11 @@ async function hasFileAnnotations(att) {
     return ANNOT.test(s);
   } catch (e) { return true; }
 }
+// Zotero リーダーで付けた注釈は PDF ではなく DB に保存されるので、そちらも見る
+async function hasAnnotations(att) {
+  try { if (att.getAnnotations().length) return true; } catch (e) {}
+  return hasFileAnnotations(att);
+}
 const normDoi = d => (d || '').trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//, '');
 
 // 全アイテムの DOI 索引
@@ -86,7 +91,7 @@ for (const [doi, items] of byDoi) {
     res.pdfPublished++;
     if (CFG.trashArxivPdf) for (const [a, c] of cls) {
       if (c !== 'arxiv') continue;
-      if (await hasFileAnnotations(a)) { master.addTag('_scix:arxiv-pdf-annotated'); continue; }
+      if (await hasAnnotations(a)) { master.addTag('_scix:arxiv-pdf-annotated'); continue; }
       a.deleted = true; await a.saveTx();
     }
     master.removeTag('_scix:needs-pub-pdf'); master.addTag('_scix:pdf-published');

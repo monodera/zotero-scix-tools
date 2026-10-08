@@ -177,6 +177,13 @@ def main():
         return (s['type'] in ('journalArticle', 'conferencePaper', 'book', 'bookSection', 'thesis'),
                 npdf(s) > 0, s['nNotes'] + len(s['atts']), s['collections'] + s['nTags'],
                 -int(re.sub(r'\D', '', s['dateAdded'])[:14] or 0))
+
+    def id_strong(k):
+        # arXiv ID / bibcode は論文固有。DOI は予稿集全体のDOIや誤記で複数の論文に共有されうるので、タイトルも合う場合のみ
+        r = RES[k]
+        if r['method'] != 'id':
+            return False
+        return bool(set(out[k]['hits'].get(r['bib']) or []) & {'ax', 'bib'}) or r['sim'] >= 0.5
     MERGES, merged_away = [], set()
     for g in groups.values():
         if len(g) < 2:
@@ -186,13 +193,19 @@ def main():
             if mg[0] in g:
                 g = [mg[0]] + [x for x in g if x != mg[0]]
         m = g[0]
-        if any(frozenset((m, x)) in nomerge for x in g[1:]):
+        if any(p <= set(g) for p in nomerge):
+            # 識別子のつながりのどこが誤りかは判断できないので、自動ではマージしない
+            REVIEW['nomerge 指定を含む重複グループ（manual.json の merge で明示したもの以外はマージしない）'].append(g)
+            for mg in MANUAL.get('merge', []):
+                if mg[0] in g and not any(p <= set(mg) for p in nomerge) \
+                        and not (set(mg) & (merged_away | {x['master'] for x in MERGES})):
+                    MERGES.append({'master': mg[0], 'others': mg[1:]})
+                    merged_away.update(mg[1:])
             continue
         weak = [x for x in g[1:] if frozenset((m, x)) not in forced
                 and tsim(snap[m]['title'], snap[x]['title']) < 0.5
                 and not (set(snap[m]['ids']['ax']) & set(snap[x]['ids']['ax']))
-                and not (RES[m]['bib'] and RES[m]['bib'] == RES[x]['bib']
-                         and RES[m]['method'] == 'id' and RES[x]['method'] == 'id')]
+                and not (RES[m]['bib'] and RES[m]['bib'] == RES[x]['bib'] and id_strong(m) and id_strong(x))]
         if weak:
             REVIEW['重複候補（識別子は共通だがタイトルが大きく異なる。マージしない）'].append(g)
             continue

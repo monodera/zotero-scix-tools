@@ -4,7 +4,7 @@
 // 4_trash_arxiv_pdf.js — 出版版PDFが既にあるアイテムから arXiv版PDFをゴミ箱へ（ダウンロードなし）
 //   ・plan.json の対象アイテムについて、添付PDFを1〜2ページ目の arXiv 刻印で判定
 //   ・「出版版」と判定されたPDFが1つ以上あれば、「arXiv版」と判定されたPDFをゴミ箱へ
-//   ・PDFファイル自体にハイライト等の書き込み注釈があるものは残し、タグ _scix:arxiv-pdf-annotated を付ける
+//   ・注釈（Zoteroリーダーで付けたもの・PDFファイルに書き込まれたもの）があるものは残し、タグ _scix:arxiv-pdf-annotated を付ける
 //   ・判定できないPDF（画像PDF・ファイルなし）には触れない
 //   ・リンクファイルなので、ゴミ箱を空にしてもPDFファイル自体はディスクに残ります
 //
@@ -53,6 +53,11 @@ async function hasFileAnnotations(att) {
     return ANNOT.test(s);
   } catch (e) { return true; }
 }
+// Zotero リーダーで付けた注釈は PDF ではなく DB に保存されるので、そちらも見る
+async function hasAnnotations(att) {
+  try { if (att.getAnnotations().length) return true; } catch (e) {}
+  return hasFileAnnotations(att);
+}
 
 const cnt = { items: 0, trashed: 0, keptAnnotated: 0 };
 const sample = [];
@@ -68,7 +73,7 @@ for (let i = 0; i < plan.pdf.length; i++) {
   const done = [];
   for (const [a, c] of cls) {
     if (c !== 'arxiv') continue;
-    if (await hasFileAnnotations(a)) { cnt.keptAnnotated++; if (!CFG.dryRun) it.addTag('_scix:arxiv-pdf-annotated'); continue; }
+    if (await hasAnnotations(a)) { cnt.keptAnnotated++; if (!CFG.dryRun) it.addTag('_scix:arxiv-pdf-annotated'); continue; }
     if (!CFG.dryRun) { a.deleted = true; await a.saveTx(); }
     cnt.trashed++; done.push(a.key);
   }
