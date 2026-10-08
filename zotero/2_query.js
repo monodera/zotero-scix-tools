@@ -43,6 +43,11 @@ async function ads(params, id) {
     try {
       xhr = await Zotero.HTTP.request('GET', url, { headers: { Authorization: 'Bearer ' + TOKEN }, responseType: 'text', timeout: 60000, successCodes: false });
     } catch (e) { nNet++; lastErr = String(e && e.message || e); await sleep(3000 * (attempt + 1)); continue; }
+    // successCodes: false だと、DNS 失敗・接続拒否・オフラインなどの通信エラーは例外ではなく status 0 で返る
+    if (!xhr.status) {
+      nNet++; lastErr = 'network error (status 0' + (xhr.channel ? ', ' + xhr.channel.status : '') + ')';
+      await sleep(3000 * (attempt + 1)); continue;
+    }
     stats.requests++;
     const rem = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Remaining');
     if (rem != null) stats.rateRemaining = +rem;
@@ -94,7 +99,7 @@ if (runErr || saveErr) {
   throw new Error(badNote + [runErr && msg(runErr), saveErr && `query-results.json の保存に失敗しました: ${msg(saveErr)}`].filter(Boolean).join(' / '));
 }
 const left = input.queries.filter(q => results[q.id] == null).length;
-const n4xx = new Set(stats.errors.filter(e => typeof e.status === 'number').map(e => e.id)).size;
+const n4xx = new Set(stats.errors.filter(e => e.status >= 400 && e.status < 500).map(e => e.id)).size;
 const resetAt = stats.rateReset ? new Date(stats.rateReset * 1000).toLocaleString() : '不明';
 return badNote
   + (stats.offline ? `ネットワークに接続できないので中断しました（最後のエラー: ${stats.offline}）。接続を確認してから再実行すると続きから実行します。\n` : '')
