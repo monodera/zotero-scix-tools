@@ -340,6 +340,8 @@ def main():
             if t:
                 pairs.append([m, t])
         if pairs:
+            # 3_apply.js は順に split/join するので、他の URL の前方一致になる短い URL を後にする
+            pairs.sort(key=lambda p: -len(p[0]))
             OPS.append({'id': 'note:' + nk, 'op': 'noteReplace', 'key': nk, 'pairs': pairs})
             STATS['ADS→SciX（ノート）'] += 1
 
