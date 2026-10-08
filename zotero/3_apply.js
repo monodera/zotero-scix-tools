@@ -137,6 +137,11 @@ const H = {
   async link(op) {
     const it = get(op.key);
     if (!alive(it)) return { status: 'skip', why: 'item missing/trashed' };
+    // マージ元にある ADS リンクがまだこのアイテムに移っていない（先行する merge の失敗など）なら、移ってから再試行する
+    const pending = op.adopt && get(op.adopt);
+    if (alive(pending) && pending.parentKey !== it.key && /adsabs/i.test(pending.getField('url'))) {
+      return { status: 'skip', why: 'ADS link to adopt is not under this item yet: ' + pending.key };
+    }
     const kids = Zotero.Items.get(it.getAttachments(false)).filter(a => a.attachmentLinkMode === LINKED_URL);
     // 既存の ADS リンク（op.adopt）があれば、新しく足さずにそれを書き換える
     const ads = op.adopt && kids.find(a => a.key === op.adopt && /adsabs/i.test(a.getField('url')));
