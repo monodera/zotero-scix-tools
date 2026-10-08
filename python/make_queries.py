@@ -30,6 +30,15 @@ def main():
     D = Data(a.workdir)
     qs = []
 
+    def pub_query(k, s, d):
+        # e-print only: is the published version indexed as a separate record?
+        w = words(dtitle(d) or s['title'])
+        la = lastname(d) or s['firstAuthor']
+        if la and len(w) >= 2:
+            qs.append({'id': k + '|P', 'key': k, 'rows': 5,
+                       'q': f"author:{qq('^' + la)} title:(" + ' OR '.join(w) +
+                            f") year:{d.get('year')}-2100 -doctype:eprint"})
+
     if a.round == 1:
         for k, s in D.snap.items():
             if s['type'] == 'webpage' and not s['ids']['ax']:
@@ -37,17 +46,16 @@ def main():
             b, _ = pick_hit(D, k)
             if b:
                 d = D.docs[b]
-                if is_pub(d):
-                    continue
-                # e-print only: is the published version indexed as a separate record?
-                w = words(dtitle(d) or s['title'])
-                la = lastname(d) or s['firstAuthor']
-                if la and len(w) >= 2:
-                    qs.append({'id': k + '|P', 'key': k, 'rows': 5,
-                               'q': f"author:{qq('^' + la)} title:(" + ' OR '.join(w) +
-                                    f") year:{d.get('year')}-2100 -doctype:eprint"})
+                if not is_pub(d):
+                    pub_query(k, s, d)
                 continue
-            if title_accept(D, k) or not s['title']:
+            acc = title_accept(D, k)
+            if acc:
+                # タイトル検索で e-print にだけ一致した場合も、出版版を探す
+                if not is_pub(D.docs[acc[0]]):
+                    pub_query(k, s, D.docs[acc[0]])
+                continue
+            if not s['title']:
                 continue
             w = words(s['title'])
             if len(w) < 2:
