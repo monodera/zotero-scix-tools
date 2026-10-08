@@ -74,6 +74,13 @@ def main():
             if au:
                 qs.append({'id': k + '|D', 'key': k, 'rows': 8, 'q': au + 'title:(' + ' OR '.join(w) + ')'})
 
+    # 前回の queries.json のうち結果がまだないもの（2_query.js のエラー・未実行）は引き継ぐ。
+    # 上書きで消えると 2_query.js で再試行されず、build_plan.py の警告も出なくなるため
+    ids = {q['id'] for q in qs}
+    carry = [q for q in D.qr_missing if q['id'] not in ids]
+    qs += carry
+    if carry:
+        print(f'前回の queries.json から、結果がまだない {len(carry)} 件を引き継ぎました')
     out = os.path.join(a.workdir, 'queries.json')
     json.dump({'fl': FL, 'queries': qs}, open(out, 'w', encoding='utf-8'))
     print(f'{len(qs)} queries -> {out}')

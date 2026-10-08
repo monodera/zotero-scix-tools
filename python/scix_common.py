@@ -24,19 +24,25 @@ class Data:
         self.snap = r['snap']
         self.out = r['out']
         self.docs = r['docs']
-        self.qr = {}
+        self.qr, qr_4xx = {}, set()
         qp = os.path.join(workdir, 'query-results.json')
         if os.path.exists(qp):
-            self.qr = json.load(open(qp, encoding='utf-8')).get('results', {})
+            j = json.load(open(qp, encoding='utf-8'))
+            self.qr = j.get('results', {})
             for v in self.qr.values():
                 for d in v or []:
                     self.docs.setdefault(d['bibcode'], d)
-        # queries.json にあるが結果がない（2_query.js のエラー・未実行）クエリ。「一致なし」とは区別する
-        self.qr_missing = []
+            # 前回の 2_query.js で 4xx（クエリ自体の問題）になったクエリ
+            qr_4xx = {e.get('id') for e in (j.get('stats') or {}).get('errors', []) if isinstance(e.get('status'), int)}
+        # queries.json にあるが結果がないクエリ。「一致なし」とは区別する
+        #   qr_missing: エラー・未実行（2_query.js の再実行で取得できる見込み）
+        #   qr_failed:  4xx（再実行しても失敗する可能性が高い）
+        self.qr_missing, self.qr_failed = [], []
         qj = os.path.join(workdir, 'queries.json')
         if os.path.exists(qj):
-            self.qr_missing = [q['id'] for q in json.load(open(qj, encoding='utf-8')).get('queries', [])
-                               if self.qr.get(q['id']) is None]
+            for q in json.load(open(qj, encoding='utf-8')).get('queries', []):
+                if self.qr.get(q['id']) is None:
+                    (self.qr_failed if q['id'] in qr_4xx else self.qr_missing).append(q)
 
 
 # ---------------- text helpers ----------------
