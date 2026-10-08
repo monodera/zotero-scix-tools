@@ -377,10 +377,12 @@ def main():
     scix_link = {o['key']: o for o in OPS if o['id'].startswith('link:scix:')}
     owner = {x: m for m, xs in MASTER_OF.items() for x in xs}   # マージ後に添付が移る先
     for k, s in snap.items():
-        if 'adsabs' in s['url'] and k not in merged_away and k not in url_set:
-            t = ads2scix(s['url'])
+        # URL 欄が空なら、3_apply.js の merge でマージ元の（最初の空でない）URL がコピーされるので、それも対象にする
+        url = s['url'] or next((snap[x]['url'] for x in MASTER_OF.get(k, []) if snap[x]['url']), '')
+        if 'adsabs' in url and k not in merged_away and k not in url_set:
+            t = ads2scix(url)
             if t:
-                OPS.append({'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': s['url'], 'to': t})
+                OPS.append({'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': url, 'to': t})
                 STATS['ADS→SciX（URL欄）'] += 1
         lk = scix_link.get(owner.get(k, k))
         for x in s['atts']:
