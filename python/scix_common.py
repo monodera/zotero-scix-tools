@@ -33,7 +33,8 @@ class Data:
                 for d in v or []:
                     self.docs.setdefault(d['bibcode'], d)
             # 前回の 2_query.js で 4xx（クエリ自体の問題）になったクエリ
-            qr_4xx = {e.get('id') for e in (j.get('stats') or {}).get('errors', []) if isinstance(e.get('status'), int)}
+            qr_4xx = {e.get('id') for e in (j.get('stats') or {}).get('errors', [])
+                      if isinstance(e.get('status'), int) and 400 <= e['status'] < 500}
         # queries.json にあるが結果がないクエリ。「一致なし」とは区別する
         #   qr_missing: エラー・未実行（2_query.js の再実行で取得できる見込み）
         #   qr_failed:  4xx（再実行しても失敗する可能性が高い）
