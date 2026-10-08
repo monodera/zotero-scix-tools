@@ -26,9 +26,26 @@ from scix_common import (DEFAULT_WORKDIR, PUB_OK, Data, accept_title, au_ok, dti
 
 TYPE_MAP = {'article': 'journalArticle', 'inproceedings': 'conferencePaper'}
 PAPER_TYPES = ('preprint', 'journalArticle', 'conferencePaper', 'webpage')
-ADSRE = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/(?:abs|link_gateway|cgi-bin/nph-data_query\?bibcode=)/?'
-                   r'([0-9]{4}[A-Za-z&.%0-9]{14,18})[^\s"<>]*')
-ADSDOI = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/doi/(10\.[^\s"<>]+)')
+LINKED_URL = 3   # Zotero.Attachments.LINK_MODE_LINKED_URL
+# ADS の URL。URL に使える ASCII 文字（" < > を除く）だけを取るので、日本語の「。」などで止まる
+ADSURL = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/[!#-;=?-~]*')
+# bibcode は19文字ちょうど。& は &amp; / %26、. は %2E になりうる
+BIBPAT = r'[0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26|%2[Ee]){15}'
+ADSBIBHEAD = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/(?:abs|link_gateway|cgi-bin/nph-data_query\?bibcode=)/?'
+                        r'(' + BIBPAT + r')')
+ADSBIB = re.compile(ADSBIBHEAD.pattern + r'(?:[/?#&]|$)')
+ADSDOI = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/doi/(10\..+)')
+
+
+def trim_url(u):
+    """URL の直後に続く文の句読点を除く。閉じ括弧は対応する開き括弧がない場合だけ除く。
+    bibcode は "." で終わることがあるので、bibcode の部分は削らない。"""
+    m = ADSBIBHEAD.match(u)
+    keep = m.end() if m else 0
+    while len(u) > keep and (u[-1] in '.,;:!?\'' or (u[-1] == ')' and u.count(')') > u.count('('))
+                 or (u[-1] == ']' and u.count(']') > u.count('['))):
+        u = u[:-1]
+    return u
 
 
 def clean_title(t):
@@ -309,33 +326,66 @@ def main():
         for x in dd.get('doi') or []:
             doi2bib.setdefault(x.lower(), bb)
 
-    def ads2scix(u):
-        md = ADSDOI.search(u)
+    def ads_id(u):
+        """ADS の URL が指すもの -> ('doi', doi) / ('bib', bibcode) / None（検索ページなど）"""
+        mu = ADSURL.search(u)
+        if not mu:
+            return None
+        u = trim_url(mu.group(0))
+        md = ADSDOI.match(u)
         if md:
-            x = unquote(md.group(1)).lower()
+            return 'doi', html.unescape(unquote(md.group(1))).lower()
+        m = ADSBIB.match(u)
+        return ('bib', html.unescape(unquote(m.group(1)))) if m else None
+
+    def ads2scix(u):
+        r = ads_id(u)
+        if not r:
+            return None
+        if r[0] == 'doi':
+            x = r[1]
             return scix_url(doi2bib[x]) if x in doi2bib else 'https://scixplorer.org/search?q=' + quote(f'doi:"{x}"')
-        m = ADSRE.search(u)
-        return scix_url(unquote(m.group(1))) if m else None
+        return scix_url(r[1])
+
+    def same_paper(u, b):
+        """ADS の URL u が SciX レコード b を指すか（arXiv版などの別名 bibcode・DOI を含む）"""
+        r, d = ads_id(u), docs.get(b) or {}
+        if not r:
+            return False
+        if r[0] == 'doi':
+            return doi2bib.get(r[1]) == b or r[1] in {x.lower() for x in d.get('doi') or []}
+        return r[1] == b or r[1] in (d.get('identifier') or [])
     url_set = {o['key'] for o in OPS if o['op'] == 'update' and 'url' in o['fields']}
+    scix_link = {o['key']: o for o in OPS if o['id'].startswith('link:scix:')}
+    owner = {x: m for m, xs in MASTER_OF.items() for x in xs}   # マージ後に添付が移る先
     for k, s in snap.items():
         if 'adsabs' in s['url'] and k not in merged_away and k not in url_set:
             t = ads2scix(s['url'])
             if t:
                 OPS.append({'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': s['url'], 'to': t})
                 STATS['ADS→SciX（URL欄）'] += 1
+        lk = scix_link.get(owner.get(k, k))
         for x in s['atts']:
             if 'adsabs' in (x['url'] or ''):
+                if lk and 'adopt' not in lk and x['linkMode'] == LINKED_URL \
+                        and same_paper(x['url'], RES[owner.get(k, k)]['bib']):
+                    # 同じ論文を指す ADS リンクなら、SciX リンクを新しく足すと重複するので、これを SciX リンクに書き換える
+                    lk['adopt'] = x['key']
+                    STATS['ADS→SciX（リンク添付）'] += 1
+                    continue
                 t = ads2scix(x['url'])
                 if t:
                     OPS.append({'id': 'url:' + x['key'], 'op': 'setUrl', 'key': x['key'], 'from': x['url'], 'to': t})
                     STATS['ADS→SciX（添付のURL）'] += 1
     for nk, body in (D.raw.get('adsNoteBodies') or {}).items():
         pairs = []
-        for m in {x.group(0) for x in list(ADSRE.finditer(body)) + list(ADSDOI.finditer(body))}:
+        for m in {trim_url(x.group(0)) for x in ADSURL.finditer(body)}:
             t = ads2scix(m)
             if t:
                 pairs.append([m, t])
         if pairs:
+            # 3_apply.js は順に split/join するので、他の URL の前方一致になる短い URL を後にする
+            pairs.sort(key=lambda p: -len(p[0]))
             OPS.append({'id': 'note:' + nk, 'op': 'noteReplace', 'key': nk, 'pairs': pairs})
             STATS['ADS→SciX（ノート）'] += 1
 
