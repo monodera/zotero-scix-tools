@@ -101,7 +101,7 @@ Updated items are tagged `_scix:published-update`. Delete the tag once you have 
 ### 4. PDFs
 
 1. Run `4_trash_arxiv_pdf.js` as a dry run, then for real.
-2. Run `5_needs_list.js`. It tags items without a publisher PDF as `_scix:needs-pub-pdf` and writes `needs-pub-pdf.html` / `.csv`.
+2. Run `5_needs_list.js`. It tags items without a publisher PDF as `_scix:needs-pub-pdf` and writes `needs-pub-pdf.html` / `.csv`. It has no dry run: it only adds and removes this tag, and rerunning it updates the tags to the current state.
 3. Open the DOI links in the list and save each paper with Zotero Connector. Each one becomes a new item.
 4. Run `6_absorb.js`, dry run first. It merges the new items into the existing ones by DOI and trashes the arXiv PDF.
 
