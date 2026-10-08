@@ -19,8 +19,15 @@ const win = Zotero.getMainWindow();
 const sleep = ms => new Promise(r => win.setTimeout(r, ms));
 
 // 途中再開：既存結果があれば読み込んで未実行分とエラー（null）だけ実行
-let results = {};
-if (await IOUtils.exists(OUT)) { try { results = JSON.parse(await Zotero.File.getContentsAsync(OUT)).results || {}; } catch (e) {} }
+let results = {}, badNote = '';
+if (await IOUtils.exists(OUT)) {
+  try { results = JSON.parse(await Zotero.File.getContentsAsync(OUT)).results || {}; }
+  catch (e) {   // 読めないファイルを上書きして失わないよう、退避してから最初から実行する
+    const bad = OUT + '.bad-' + new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
+    await IOUtils.move(OUT, bad);
+    badNote = `既存の query-results.json が読めなかったので ${bad} に退避し、最初から実行しました。\n`;
+  }
+}
 
 let pw = null, pline = null;
 try { pw = new Zotero.ProgressWindow({ closeOnClick: false }); pw.changeHeadline('SciX query'); pline = new pw.ItemProgress(null, 'starting…'); pw.show(); } catch (e) {}
@@ -75,7 +82,7 @@ progress('done'); try { pw.startCloseTimer(8000); } catch (e) {}
 const left = input.queries.filter(q => results[q.id] == null).length;
 const n4xx = new Set(stats.errors.filter(e => typeof e.status === 'number').map(e => e.id)).size;
 const resetAt = stats.rateReset ? new Date(stats.rateReset * 1000).toLocaleString() : '不明';
-return (stats.dailyLimit ? `1日のリクエスト上限に達したので中断しました（リセット: ${resetAt}）。リセット後に再実行すると続きから実行します。\n` : '')
+return badNote + (stats.dailyLimit ? `1日のリクエスト上限に達したので中断しました（リセット: ${resetAt}）。リセット後に再実行すると続きから実行します。\n` : '')
   + `queries=${todo.length}, requests=${stats.requests}, errors=${stats.errors.length}, 未取得（再実行で再試行）=${left}, rateRemaining=${stats.rateRemaining}\n`
   + (n4xx ? `うち ${n4xx} 件は 4xx エラー（クエリ自体の問題で、再実行しても失敗する可能性が高い）。詳細は query-results.json の stats.errors\n` : '')
   + `→ ${OUT}`;
