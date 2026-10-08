@@ -40,10 +40,12 @@ try {
   pw.show();
 } catch (e) { pw = null; }
 const progress = (txt, pct) => { try { pline.setText(txt); if (pct != null) pline.setProgress(pct); } catch (e) {} };
+// エラーで止めるとき、閉じられない進捗ウィンドウ（closeOnClick: false）が残らないよう閉じてから投げる
+const fail = msg => { try { pw.close(); } catch (e) {} throw new Error(msg); };
 
 // ---------- HTTP ----------
 async function ads(params) {
-  let n429 = 0;
+  let n429 = 0, nNet = 0, lastErr = '';
   const url = CFG.api + '?' + new URLSearchParams(params).toString();
   for (let attempt = 0; attempt < 5; attempt++) {
     let xhr;
@@ -52,28 +54,41 @@ async function ads(params) {
         headers: { Authorization: 'Bearer ' + TOKEN },
         responseType: 'text', timeout: 60000, successCodes: false,
       });
-    } catch (e) { await sleep(3000 * (attempt + 1)); continue; }
+    } catch (e) { nNet++; lastErr = String(e && e.message || e); await sleep(3000 * (attempt + 1)); continue; }
+    // successCodes: false だと、DNS 失敗・接続拒否・オフラインなどの通信エラーは例外ではなく status 0 で返る
+    if (!xhr.status) {
+      nNet++; lastErr = 'network error (status 0' + (xhr.channel ? ', ' + xhr.channel.status : '') + ')';
+      await sleep(3000 * (attempt + 1)); continue;
+    }
     stats.requests++;
     const rem = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Remaining');
     if (rem != null) stats.rateRemaining = +rem;
     const reset = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Reset');
     if (reset != null) stats.rateReset = +reset;
-    if (xhr.status === 200) { await sleep(CFG.delayMs); return JSON.parse(xhr.responseText); }
-    if (xhr.status === 401 || xhr.status === 403) throw new Error('認証エラー(' + xhr.status + ')：トークンを確認してください');
+    if (xhr.status === 200) {
+      await sleep(CFG.delayMs);
+      try { const j = JSON.parse(xhr.responseText); if (j && j.response) return j; } catch (e) {}
+      // 200 なのに検索結果の JSON ではない（メンテナンス中の HTML ページなど）。一時的な問題として再試行する
+      lastErr = 'HTTP 200 but not a search result: ' + (xhr.responseText || '').slice(0, 200);
+      await sleep(5000 * (attempt + 1)); continue;
+    }
+    if (xhr.status === 401 || xhr.status === 403) fail('認証エラー(' + xhr.status + ')：トークンを確認してください');
     if (xhr.status === 429) {
       // 1日の上限を使い切った場合は待っても回復しない（残り回数のヘッダーがない場合に備え、429 が続いたときも）。
       // このスクリプトは途中再開できないので、resolve.json を書かずに止める
       if (stats.rateRemaining === 0 || ++n429 >= 5) {
         const at = stats.rateReset ? new Date(stats.rateReset * 1000).toLocaleString() : '不明';
-        throw new Error(`1日のリクエスト上限に達しました（リセット: ${at}）。リセット後に最初から実行してください`);
+        fail(`1日のリクエスト上限に達しました（リセット: ${at}）。リセット後に最初から実行してください`);
       }
       progress('rate limited, waiting 60s…'); await sleep(60000); continue;
     }
-    if (xhr.status >= 500) { await sleep(5000 * (attempt + 1)); continue; }
+    if (xhr.status >= 500) { lastErr = 'HTTP ' + xhr.status; await sleep(5000 * (attempt + 1)); continue; }
     stats.errors.push({ status: xhr.status, q: params.q.slice(0, 300), body: (xhr.responseText || '').slice(0, 300) });
     return null;
   }
-  stats.errors.push({ status: 'retry-exhausted', q: params.q.slice(0, 300) });
+  // 通信自体が一度も成功しないなら、ネットワーク障害とみなして止める（以降のリクエストも同じく失敗するので）
+  if (nNet >= 5) fail(`ネットワークに接続できません（最後のエラー: ${lastErr}）。接続を確認してから最初から実行してください`);
+  stats.errors.push({ status: 'retry-exhausted', q: params.q.slice(0, 300), last: lastErr });
   return null;
 }
 
