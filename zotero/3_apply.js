@@ -138,14 +138,16 @@ const H = {
     const it = get(op.key);
     if (!alive(it)) return { status: 'skip', why: 'item missing/trashed' };
     const kids = Zotero.Items.get(it.getAttachments(false)).filter(a => a.attachmentLinkMode === LINKED_URL);
-    if (kids.some(a => a.getField('url') === op.url)) return { status: 'noop' };
+    // 既存の ADS リンク（op.adopt）があれば、新しく足さずにそれを書き換える
+    const ads = op.adopt && kids.find(a => a.key === op.adopt && /adsabs/i.test(a.getField('url')));
+    // ただし SciX リンクが既にあると書き換えても重複するだけなので、ADS リンクは残して skip として報告する
+    const adsLeft = ads && { status: 'skip', why: 'SciX link already exists; ADS link left as is: ' + ads.key };
+    if (kids.some(a => a.getField('url') === op.url)) return adsLeft || { status: 'noop' };
     const same = kids.find(a => a.getField('title') === op.title);
     if (same) {
       if (!CFG.dryRun) { same.setField('url', op.url); await same.saveTx(); }
-      return { status: 'ok', why: 'updated existing link' };
+      return adsLeft || { status: 'ok', why: 'updated existing link' };
     }
-    // 既存の ADS リンク（op.adopt）があれば、新しく足さずにそれを書き換える
-    const ads = op.adopt && kids.find(a => a.key === op.adopt && /adsabs/i.test(a.getField('url')));
     if (ads) {
       if (!CFG.dryRun) { ads.setField('url', op.url); ads.setField('title', op.title); await ads.saveTx(); }
       return { status: 'ok', why: 'converted ADS link' };
