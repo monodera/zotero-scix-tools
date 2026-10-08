@@ -31,6 +31,12 @@ class Data:
             for v in self.qr.values():
                 for d in v or []:
                     self.docs.setdefault(d['bibcode'], d)
+        # queries.json にあるが結果がない（2_query.js のエラー・未実行）クエリ。「一致なし」とは区別する
+        self.qr_missing = []
+        qj = os.path.join(workdir, 'queries.json')
+        if os.path.exists(qj):
+            self.qr_missing = [q['id'] for q in json.load(open(qj, encoding='utf-8')).get('queries', [])
+                               if self.qr.get(q['id']) is None]
 
 
 # ---------------- text helpers ----------------

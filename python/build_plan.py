@@ -88,6 +88,11 @@ def main():
     FORCE = set(MANUAL.get('forceFull', []))
     FORCE |= {k for k, s in snap.items() if re.match(r'\s*arXiv:\d', s['title'] or '')}   # broken titles
     REVIEW = collections.defaultdict(list)
+    if D.qr_missing:
+        print(f'WARNING: 追加検索のうち {len(D.qr_missing)} 件の結果がありません（2_query.js のエラーまたは未実行）。'
+              '該当アイテムは「一致なし」や「arXiv版のみ」として扱われます。2_query.js を再実行してから build_plan.py を再実行してください。')
+        REVIEW['追加検索の結果がない（2_query.js を再実行してから build_plan.py を再実行）'] = \
+            [(k, None, None) for k in sorted({q.split('|')[0] for q in D.qr_missing}) if k in snap]
 
     # ---------- 1. resolve each item to a SciX record ----------
     RES = {}
