@@ -26,6 +26,7 @@ from scix_common import (DEFAULT_WORKDIR, PUB_OK, Data, accept_title, au_ok, dti
 
 TYPE_MAP = {'article': 'journalArticle', 'inproceedings': 'conferencePaper'}
 PAPER_TYPES = ('preprint', 'journalArticle', 'conferencePaper', 'webpage')
+LINKED_URL = 3   # Zotero.Attachments.LINK_MODE_LINKED_URL
 # bibcode は19文字ちょうど。& はノートのHTMLでは &amp;、URLでは %26 になる
 BIBPAT = r'[0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26){15}'
 # URL の直後に続く文の句読点（"…/abstract." の "." など）は URL に含めない
@@ -321,14 +322,22 @@ def main():
         m = ADSRE.search(u)
         return scix_url(html.unescape(unquote(m.group(1)))) if m else None
     url_set = {o['key'] for o in OPS if o['op'] == 'update' and 'url' in o['fields']}
+    scix_link = {o['key']: o for o in OPS if o['id'].startswith('link:scix:')}
+    owner = {x: m for m, xs in MASTER_OF.items() for x in xs}   # マージ後に添付が移る先
     for k, s in snap.items():
         if 'adsabs' in s['url'] and k not in merged_away and k not in url_set:
             t = ads2scix(s['url'])
             if t:
                 OPS.append({'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': s['url'], 'to': t})
                 STATS['ADS→SciX（URL欄）'] += 1
+        lk = scix_link.get(owner.get(k, k))
         for x in s['atts']:
             if 'adsabs' in (x['url'] or ''):
+                if lk and 'adopt' not in lk and x['linkMode'] == LINKED_URL:
+                    # SciX リンクを新しく足すと重複するので、この ADS リンクを SciX リンクに書き換える
+                    lk['adopt'] = x['key']
+                    STATS['ADS→SciX（リンク添付）'] += 1
+                    continue
                 t = ads2scix(x['url'])
                 if t:
                     OPS.append({'id': 'url:' + x['key'], 'op': 'setUrl', 'key': x['key'], 'from': x['url'], 'to': t})

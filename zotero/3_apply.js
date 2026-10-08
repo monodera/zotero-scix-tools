@@ -144,6 +144,12 @@ const H = {
       if (!CFG.dryRun) { same.setField('url', op.url); await same.saveTx(); }
       return { status: 'ok', why: 'updated existing link' };
     }
+    // 既存の ADS リンク（op.adopt）があれば、新しく足さずにそれを書き換える
+    const ads = op.adopt && kids.find(a => a.key === op.adopt && /adsabs/i.test(a.getField('url')));
+    if (ads) {
+      if (!CFG.dryRun) { ads.setField('url', op.url); ads.setField('title', op.title); await ads.saveTx(); }
+      return { status: 'ok', why: 'converted ADS link' };
+    }
     if (!CFG.dryRun) await Zotero.Attachments.linkFromURL({ url: op.url, parentItemID: it.id, title: op.title });
     return { status: 'ok' };
   },
