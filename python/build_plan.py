@@ -382,7 +382,10 @@ def main():
         if 'adsabs' in url and k not in merged_away and k not in url_set:
             t = ads2scix(url)
             if t:
-                OPS.append({'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': url, 'to': t})
+                op = {'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': url, 'to': t}
+                if not s['url']:
+                    op['afterMerge'] = True   # dry run ではマージしないので、URL 欄は空のまま
+                OPS.append(op)
                 STATS['ADS→SciX（URL欄）'] += 1
         lk = scix_link.get(owner.get(k, k))
         for x in s['atts']:
@@ -391,6 +394,8 @@ def main():
                         and same_paper(x['url'], RES[owner.get(k, k)]['bib']):
                     # 同じ論文を指す ADS リンクなら、SciX リンクを新しく足すと重複するので、これを SciX リンクに書き換える
                     lk['adopt'] = x['key']
+                    if k in owner:
+                        lk['adoptAfterMerge'] = True   # dry run ではマージしないので、添付はまだマージ元にある
                     STATS['ADS→SciX（リンク添付）'] += 1
                     continue
                 t = ads2scix(x['url'])

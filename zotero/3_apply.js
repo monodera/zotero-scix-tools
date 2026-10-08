@@ -140,6 +140,7 @@ const H = {
     // マージ元にある ADS リンクがまだこのアイテムに移っていない（先行する merge の失敗など）なら、移ってから再試行する
     const pending = op.adopt && get(op.adopt);
     if (alive(pending) && pending.parentKey !== it.key && /adsabs/i.test(pending.getField('url'))) {
+      if (CFG.dryRun && op.adoptAfterMerge) return { status: 'ok', why: 'would convert ADS link after merge' };
       return { status: 'skip', why: 'ADS link to adopt is not under this item yet: ' + pending.key };
     }
     const kids = Zotero.Items.get(it.getAttachments(false)).filter(a => a.attachmentLinkMode === LINKED_URL);
@@ -166,7 +167,11 @@ const H = {
     if (!alive(it)) return { status: 'skip', why: 'missing/trashed' };
     const cur = it.getField('url');
     if (cur === op.to) return { status: 'noop' };
-    if (cur !== op.from) return { status: 'skip', why: 'url changed since planning: ' + cur };
+    if (cur !== op.from) {
+      // マージでコピーされる URL の置換は、dry run ではマージしないので URL 欄が空のまま
+      if (CFG.dryRun && op.afterMerge && !cur) return { status: 'ok', why: 'would set after merge' };
+      return { status: 'skip', why: 'url changed since planning: ' + cur };
+    }
     if (!CFG.dryRun) { it.setField('url', op.to); await it.saveTx(); }
     return { status: 'ok' };
   },
