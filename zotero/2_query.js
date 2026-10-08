@@ -33,22 +33,28 @@ let pw = null, pline = null;
 try { pw = new Zotero.ProgressWindow({ closeOnClick: false }); pw.changeHeadline('SciX query'); pline = new pw.ItemProgress(null, 'starting…'); pw.show(); } catch (e) {}
 const progress = (t, p) => { try { pline.setText(t); if (p != null) pline.setProgress(p); } catch (e) {} };
 
-const stats = { requests: 0, errors: [], rateRemaining: null, rateReset: null, dailyLimit: false };
+const stats = { requests: 0, errors: [], rateRemaining: null, rateReset: null, dailyLimit: false, offline: '' };
 async function ads(params, id) {
-  let n429 = 0;
+  let n429 = 0, nNet = 0;
   const url = CFG.api + '?' + new URLSearchParams(params).toString();
   let lastErr = '';
   for (let attempt = 0; attempt < 5; attempt++) {
     let xhr;
     try {
       xhr = await Zotero.HTTP.request('GET', url, { headers: { Authorization: 'Bearer ' + TOKEN }, responseType: 'text', timeout: 60000, successCodes: false });
-    } catch (e) { lastErr = String(e && e.message || e); await sleep(3000 * (attempt + 1)); continue; }
+    } catch (e) { nNet++; lastErr = String(e && e.message || e); await sleep(3000 * (attempt + 1)); continue; }
     stats.requests++;
     const rem = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Remaining');
     if (rem != null) stats.rateRemaining = +rem;
     const reset = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Reset');
     if (reset != null) stats.rateReset = +reset;
-    if (xhr.status === 200) { await sleep(CFG.delayMs); return JSON.parse(xhr.responseText); }
+    if (xhr.status === 200) {
+      await sleep(CFG.delayMs);
+      try { const j = JSON.parse(xhr.responseText); if (j && j.response) return j; } catch (e) {}
+      // 200 なのに検索結果の JSON ではない（メンテナンス中の HTML ページなど）。一時的な問題として再試行する
+      lastErr = 'HTTP 200 but not a search result: ' + (xhr.responseText || '').slice(0, 200);
+      await sleep(5000 * (attempt + 1)); continue;
+    }
     if (xhr.status === 401 || xhr.status === 403) throw new Error('認証エラー(' + xhr.status + ')');
     if (xhr.status === 429) {
       // 1日の上限を使い切った場合は待っても回復しないので打ち切る（残り回数のヘッダーがない場合に備え、429 が続いたときも）
@@ -60,29 +66,39 @@ async function ads(params, id) {
     stats.errors.push({ id, status: xhr.status, q: params.q.slice(0, 300), body: (xhr.responseText || '').slice(0, 300) });
     return null;
   }
+  // 通信自体が一度も成功しないなら、ネットワーク障害とみなして打ち切る（以降のクエリも同じく失敗するので）
+  if (nNet >= 5) { stats.offline = lastErr || 'unknown'; return null; }
   stats.errors.push({ id, status: 'retry-exhausted', q: params.q.slice(0, 300), last: lastErr });
   return null;
 }
 
 // null（エラー）と未設定（日次上限で中断）のクエリは再実行時に再試行する。0件ヒットは [] で保存される
 const todo = input.queries.filter(q => results[q.id] == null);
+let runErr = null, saveErr = null;
 try {
   for (let i = 0; i < todo.length; i++) {
     const q = todo[i];
     progress(`query ${i + 1}/${todo.length}`, 100 * (i + 1) / todo.length);
     const r = await ads({ q: q.q, fl: input.fl, rows: q.rows || 5, sort: 'score desc' }, q.id);
-    if (stats.dailyLimit) break;
+    if (stats.dailyLimit || stats.offline) break;
     results[q.id] = r && r.response ? r.response.docs : null;
     if (i % 100 === 99) await Zotero.File.putContentsAsync(OUT, JSON.stringify({ results }));
   }
-} finally {   // 認証エラーなどで中断しても、それまでの結果は保存する
-  await Zotero.File.putContentsAsync(OUT, JSON.stringify({ generated: new Date().toISOString(), stats, results }));
-}
+} catch (e) { runErr = e; }
+// 認証エラーなどで中断しても、それまでの結果は保存する。保存の失敗で元のエラーが隠れないよう、両方を報告する
+try { await Zotero.File.putContentsAsync(OUT, JSON.stringify({ generated: new Date().toISOString(), stats, results })); }
+catch (e) { saveErr = e; }
 progress('done'); try { pw.startCloseTimer(8000); } catch (e) {}
+if (runErr || saveErr) {
+  const msg = e => String(e && e.message || e);
+  throw new Error([runErr && msg(runErr), saveErr && `query-results.json の保存に失敗しました: ${msg(saveErr)}`].filter(Boolean).join(' / '));
+}
 const left = input.queries.filter(q => results[q.id] == null).length;
 const n4xx = new Set(stats.errors.filter(e => typeof e.status === 'number').map(e => e.id)).size;
 const resetAt = stats.rateReset ? new Date(stats.rateReset * 1000).toLocaleString() : '不明';
-return badNote + (stats.dailyLimit ? `1日のリクエスト上限に達したので中断しました（リセット: ${resetAt}）。リセット後に再実行すると続きから実行します。\n` : '')
+return badNote
+  + (stats.offline ? `ネットワークに接続できないので中断しました（最後のエラー: ${stats.offline}）。接続を確認してから再実行すると続きから実行します。\n` : '')
+  + (stats.dailyLimit ? `1日のリクエスト上限に達したので中断しました（リセット: ${resetAt}）。リセット後に再実行すると続きから実行します。\n` : '')
   + `queries=${todo.length}, requests=${stats.requests}, errors=${stats.errors.length}, 未取得（再実行で再試行）=${left}, rateRemaining=${stats.rateRemaining}\n`
   + (n4xx ? `うち ${n4xx} 件は 4xx エラー（クエリ自体の問題で、再実行しても失敗する可能性が高い）。詳細は query-results.json の stats.errors\n` : '')
   + `→ ${OUT}`;
