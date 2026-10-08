@@ -54,7 +54,7 @@ async function hasFileAnnotations(att) {
 }
 // Zotero リーダーで付けた注釈は PDF ではなく DB に保存されるので、そちらも見る
 async function hasAnnotations(att) {
-  try { if (att.getAnnotations(true).length) return true; } catch (e) {}
+  try { if (att.getAnnotations().length) return true; } catch (e) {}
   return hasFileAnnotations(att);
 }
 const normDoi = d => (d || '').trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//, '');
