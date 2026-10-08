@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy to scix-work/manual.json and edit. Keys are Zotero item keys (shown in review.html). All sections are optional.",
+  "resolve": {
+    "ABCD1234": "2017A&A...608A...2I",
+    "EFGH5678": null
+  },
+  "merge": [
+    ["MASTERKEY", "DUPKEY1", "DUPKEY2"]
+  ],
+  "nomerge": [
+    ["KEYA", "KEYB"]
+  ],
+  "addAx": {
+    "IJKL9012": "1508.04982"
+  },
+  "forceFull": ["IJKL9012"],
+  "fields": {
+    "MNOP3456": {"DOI": "10.1038/s41562-020-01040-1"}
+  },
+  "links": {
+    "QRST7890": [{"title": "Publisher", "url": "https://example.org/paper"}]
+  }
+}

@@ -1,0 +1,61 @@
+// =====================================================================
+// Step 2 (read-only): run the extra SciX queries listed in scix-work/queries.json (made by python/make_queries.py). Writes scix-work/query-results.json. Resumable.
+//
+// 2_query.js — 追加照合（読み取り専用：ライブラリは変更しません）
+//   queries.json に用意した検索を SciX に投げ、結果を query-results.json に保存します。
+//   ・識別子もタイトルでも見つからなかったアイテムの再検索（条件を緩めたもの）
+//   ・arXiv版しか見つからなかったアイテムについて、出版版が別レコードになっていないかの確認
+//
+// 実行方法: 01 と同じ（Run JavaScript / Run as async function にチェック）
+// =====================================================================
+const CFG = { token: '', api: 'https://api.adsabs.harvard.edu/v1/search/query', delayMs: 350 };
+
+const DIR = PathUtils.join(Zotero.DataDirectory.dir, 'scix-work');
+let TOKEN = CFG.token.trim();
+if (!TOKEN) TOKEN = (await Zotero.File.getContentsAsync(PathUtils.join(DIR, 'ads_token.txt'))).trim();
+const input = JSON.parse(await Zotero.File.getContentsAsync(PathUtils.join(DIR, 'queries.json')));
+const OUT = PathUtils.join(DIR, 'query-results.json');
+const win = Zotero.getMainWindow();
+const sleep = ms => new Promise(r => win.setTimeout(r, ms));
+
+// 途中再開：既存結果があれば読み込んで未実行分だけ実行
+let results = {};
+if (await IOUtils.exists(OUT)) { try { results = JSON.parse(await Zotero.File.getContentsAsync(OUT)).results || {}; } catch (e) {} }
+
+let pw = null, pline = null;
+try { pw = new Zotero.ProgressWindow({ closeOnClick: false }); pw.changeHeadline('SciX query'); pline = new pw.ItemProgress(null, 'starting…'); pw.show(); } catch (e) {}
+const progress = (t, p) => { try { pline.setText(t); if (p != null) pline.setProgress(p); } catch (e) {} };
+
+const stats = { requests: 0, errors: [], rateRemaining: null };
+async function ads(params) {
+  const url = CFG.api + '?' + new URLSearchParams(params).toString();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let xhr;
+    try {
+      xhr = await Zotero.HTTP.request('GET', url, { headers: { Authorization: 'Bearer ' + TOKEN }, responseType: 'text', timeout: 60000, successCodes: false });
+    } catch (e) { await sleep(3000 * (attempt + 1)); continue; }
+    stats.requests++;
+    const rem = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Remaining');
+    if (rem != null) stats.rateRemaining = +rem;
+    if (xhr.status === 200) { await sleep(CFG.delayMs); return JSON.parse(xhr.responseText); }
+    if (xhr.status === 401 || xhr.status === 403) throw new Error('認証エラー(' + xhr.status + ')');
+    if (xhr.status === 429) { progress('rate limited, waiting 60s…'); await sleep(60000); continue; }
+    if (xhr.status >= 500) { await sleep(5000 * (attempt + 1)); continue; }
+    stats.errors.push({ status: xhr.status, q: params.q.slice(0, 300) });
+    return null;
+  }
+  stats.errors.push({ status: 'retry-exhausted', q: params.q.slice(0, 300) });
+  return null;
+}
+
+const todo = input.queries.filter(q => !(q.id in results));
+for (let i = 0; i < todo.length; i++) {
+  const q = todo[i];
+  progress(`query ${i + 1}/${todo.length}`, 100 * (i + 1) / todo.length);
+  const r = await ads({ q: q.q, fl: input.fl, rows: q.rows || 5, sort: 'score desc' });
+  results[q.id] = r && r.response ? r.response.docs : null;
+  if (i % 100 === 99) await Zotero.File.putContentsAsync(OUT, JSON.stringify({ results }));
+}
+await Zotero.File.putContentsAsync(OUT, JSON.stringify({ generated: new Date().toISOString(), stats, results }));
+progress('done'); try { pw.startCloseTimer(8000); } catch (e) {}
+return `完了: queries=${todo.length}, requests=${stats.requests}, errors=${stats.errors.length}, rateRemaining=${stats.rateRemaining}\n→ ${OUT}`;

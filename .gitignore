@@ -1,0 +1,16 @@
+# never commit your token or library-specific outputs
+ads_token.txt
+scix-work/
+*.jsonl
+resolve.json
+query-results.json
+queries.json
+plan.json
+resolution.json
+review.html
+dryrun-report.json
+needs-pub-pdf.*
+manual.json
+*.sqlite*
+__pycache__/
+.DS_Store
