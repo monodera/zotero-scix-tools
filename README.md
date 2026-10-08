@@ -88,7 +88,7 @@ python3 build_plan.py
 Open `~/Zotero/scix-work/review.html`. The item keys in it are `zotero://` links that open the item in Zotero.
 
 - **Many items still unmatched?** Run `python3 make_queries.py --round 2`, then `2_query.js`, then `build_plan.py` again. Round 2 searches without the year restriction.
-- **Need to fix a match, block a merge or add a link you found yourself?** Write `scix-work/manual.json` (see `examples/`) and rerun `build_plan.py`.
+- **Need to fix a match, block a merge or add a link you found yourself?** Write `scix-work/manual.json` (see `examples/`) and rerun `build_plan.py`. Values under `fields` are always written, overriding both the item's current values and those from SciX.
 
 ### 3. Apply
 

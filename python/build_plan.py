@@ -251,14 +251,14 @@ def main():
         b = RES[k]['bib']
         d = docs.get(b) if b else None
         axs = sorted({x for y in [k] + MASTER_OF.get(k, []) for x in snap[y]['ids']['ax']})
+        # manual.json の fields は、既存の値・SciX 由来の値より優先して設定する
+        mf = {kk: v for kk, v in (MANUAL.get('fields', {}).get(k) or {}).items() if v}
+        mdoi = (mf.get('DOI') or '').lower()
+        if mdoi:
+            s['ids']['doi'] = [mdoi] + [x for x in s['ids']['doi'] if x != mdoi]
         if d is None:
-            mf = MANUAL.get('fields', {}).get(k)
             if mf:
-                ff = {kk: v for kk, v in mf.items() if not s.get(kk)}
-                if ff:
-                    OPS.append({'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': ff, 'extraLines': [], 'tags': []})
-                if mf.get('DOI') and not s['ids']['doi']:
-                    s['ids']['doi'].append(mf['DOI'].lower())
+                OPS.append({'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': mf, 'extraLines': [], 'tags': []})
             if s['ids']['doi']:
                 OPS.append({'id': 'link:pub:' + k, 'op': 'link', 'key': k, 'title': 'Publisher',
                             'url': 'https://doi.org/' + s['ids']['doi'][0]})
@@ -306,13 +306,16 @@ def main():
             nt = clean_title(dtitle(d))
             if nt and tsim(s['title'], nt) < 0.995:
                 fields['title'] = nt
+        if mdoi and fields.get('url', '').startswith('https://doi.org/'):
+            fields['url'] = 'https://doi.org/' + mdoi
+        fields.update(mf)
         upd = {'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': {kk: v for kk, v in fields.items() if v},
                'extraLines': ['Bibcode: ' + b] + ([f'arXiv: {axs[0]}'] if axs else []), 'tags': tags}
         if set_type:
             upd['setType'] = set_type
         OPS.append(upd)
         OPS.append({'id': 'link:scix:' + k, 'op': 'link', 'key': k, 'title': 'NASA SciX', 'url': scix_url(b)})
-        pd = doi or (s['ids']['doi'][0] if s['ids']['doi'] and not pub else None)
+        pd = mdoi or doi or (s['ids']['doi'][0] if s['ids']['doi'] and not pub else None)
         if pd:
             OPS.append({'id': 'link:pub:' + k, 'op': 'link', 'key': k, 'title': 'Publisher', 'url': 'https://doi.org/' + pd})
         STATS['SciX一致（出版版）' if pub else 'SciX一致（arXivのみ）'] += 1
