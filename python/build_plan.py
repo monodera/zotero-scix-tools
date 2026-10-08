@@ -256,6 +256,9 @@ def main():
         mdoi = (mf.get('DOI') or '').lower()
         if mdoi:
             s['ids']['doi'] = [mdoi] + [x for x in s['ids']['doi'] if x != mdoi]
+            # URL 欄が DOI のリンクなら、指定した DOI のリンクにする（URL を明示していればそちらを優先）
+            if 'url' not in mf and re.match(r'https?://(dx\.)?doi\.org/', s['url'] or '', re.I):
+                mf['url'] = 'https://doi.org/' + mdoi
         if d is None:
             if mf:
                 OPS.append({'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': mf, 'extraLines': [], 'tags': []})
