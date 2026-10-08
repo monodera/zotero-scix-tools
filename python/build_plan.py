@@ -27,13 +27,21 @@ from scix_common import (DEFAULT_WORKDIR, PUB_OK, Data, accept_title, au_ok, dti
 TYPE_MAP = {'article': 'journalArticle', 'inproceedings': 'conferencePaper'}
 PAPER_TYPES = ('preprint', 'journalArticle', 'conferencePaper', 'webpage')
 LINKED_URL = 3   # Zotero.Attachments.LINK_MODE_LINKED_URL
-# bibcode は19文字ちょうど。& はノートのHTMLでは &amp;、URLでは %26 になる
-BIBPAT = r'[0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26){15}'
-# URL の直後に続く文の句読点（"…/abstract." の "." など）は URL に含めない
-URLEND = r'(?=[.,;:!?)\]]*(?:[\s"<>]|$))'
-ADSRE = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/(?:abs|link_gateway|cgi-bin/nph-data_query\?bibcode=)/?'
-                   r'(' + BIBPAT + r')(?:[/?#&][^\s"<>]*?)?' + URLEND)
-ADSDOI = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/doi/(10\.[^\s"<>]+?)' + URLEND)
+# ADS の URL。URL に使える ASCII 文字（" < > を除く）だけを取るので、日本語の「。」などで止まる
+ADSURL = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/[!#-;=?-~]*')
+# bibcode は19文字ちょうど。& は &amp; / %26、. は %2E になりうる
+BIBPAT = r'[0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26|%2[Ee]){15}'
+ADSBIB = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/(?:abs|link_gateway|cgi-bin/nph-data_query\?bibcode=)/?'
+                    r'(' + BIBPAT + r')(?:[/?#&]|$)')
+ADSDOI = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/doi/(10\..+)')
+
+
+def trim_url(u):
+    """URL の直後に続く文の句読点を除く。閉じ括弧は対応する開き括弧がない場合だけ除く。"""
+    while u and (u[-1] in '.,;:!?\'' or (u[-1] == ')' and u.count(')') > u.count('('))
+                 or (u[-1] == ']' and u.count(']') > u.count('['))):
+        u = u[:-1]
+    return u
 
 
 def clean_title(t):
@@ -315,11 +323,15 @@ def main():
             doi2bib.setdefault(x.lower(), bb)
 
     def ads2scix(u):
-        md = ADSDOI.search(u)
+        mu = ADSURL.search(u)
+        if not mu:
+            return None
+        u = trim_url(mu.group(0))
+        md = ADSDOI.match(u)
         if md:
             x = html.unescape(unquote(md.group(1))).lower()
             return scix_url(doi2bib[x]) if x in doi2bib else 'https://scixplorer.org/search?q=' + quote(f'doi:"{x}"')
-        m = ADSRE.search(u)
+        m = ADSBIB.match(u)
         return scix_url(html.unescape(unquote(m.group(1)))) if m else None
     url_set = {o['key'] for o in OPS if o['op'] == 'update' and 'url' in o['fields']}
     scix_link = {o['key']: o for o in OPS if o['id'].startswith('link:scix:')}
@@ -344,7 +356,7 @@ def main():
                     STATS['ADS→SciX（添付のURL）'] += 1
     for nk, body in (D.raw.get('adsNoteBodies') or {}).items():
         pairs = []
-        for m in {x.group(0) for x in list(ADSRE.finditer(body)) + list(ADSDOI.finditer(body))}:
+        for m in {trim_url(x.group(0)) for x in ADSURL.finditer(body)}:
             t = ads2scix(m)
             if t:
                 pairs.append([m, t])

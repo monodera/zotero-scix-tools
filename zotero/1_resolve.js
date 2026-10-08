@@ -70,8 +70,8 @@ async function ads(params) {
 const AXRE = /(?:arxiv\s*:\s*|arxiv\.org\/(?:abs|pdf)\/|10\.48550\/arxiv\.)((?:\d{4}\.\d{4,5})|(?:[a-z][a-z\-]+(?:\.[a-z]{2})?\/\d{7}))/ig;
 const normAx = s => s.toLowerCase().replace(/^([a-z\-]+)\.[a-z]{2}\//, '$1/');
 const normDoi = s => s.trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').toLowerCase();
-// bibcode は19文字ちょうど（& は &amp; / %26 になりうる）。直後の句点などを含めない
-const BIBRE = /adsabs\.harvard\.edu\/(?:abs|link_gateway)\/([0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26){15})/g;
+// bibcode は19文字ちょうど（& は &amp; / %26、. は %2E になりうる）。直後の句点などを含めない
+const BIBRE = /adsabs\.harvard\.edu\/(?:abs|link_gateway)\/([0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26|%2[Ee]){15})/g;
 
 function keyOf(idStr) {          // normalize an ADS identifier string into our key space
   const s = idStr.trim();
