@@ -26,9 +26,13 @@ from scix_common import (DEFAULT_WORKDIR, PUB_OK, Data, accept_title, au_ok, dti
 
 TYPE_MAP = {'article': 'journalArticle', 'inproceedings': 'conferencePaper'}
 PAPER_TYPES = ('preprint', 'journalArticle', 'conferencePaper', 'webpage')
+# bibcode は19文字ちょうど。& はノートのHTMLでは &amp;、URLでは %26 になる
+BIBPAT = r'[0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26){15}'
+# URL の直後に続く文の句読点（"…/abstract." の "." など）は URL に含めない
+URLEND = r'(?=[.,;:!?)\]]*(?:[\s"<>]|$))'
 ADSRE = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/(?:abs|link_gateway|cgi-bin/nph-data_query\?bibcode=)/?'
-                   r'([0-9]{4}[A-Za-z&.%0-9]{14,18})[^\s"<>]*')
-ADSDOI = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/doi/(10\.[^\s"<>]+)')
+                   r'(' + BIBPAT + r')(?:[/?#&][^\s"<>]*?)?' + URLEND)
+ADSDOI = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/doi/(10\.[^\s"<>]+?)' + URLEND)
 
 
 def clean_title(t):
@@ -312,10 +316,10 @@ def main():
     def ads2scix(u):
         md = ADSDOI.search(u)
         if md:
-            x = unquote(md.group(1)).lower()
+            x = html.unescape(unquote(md.group(1))).lower()
             return scix_url(doi2bib[x]) if x in doi2bib else 'https://scixplorer.org/search?q=' + quote(f'doi:"{x}"')
         m = ADSRE.search(u)
-        return scix_url(unquote(m.group(1))) if m else None
+        return scix_url(html.unescape(unquote(m.group(1)))) if m else None
     url_set = {o['key'] for o in OPS if o['op'] == 'update' and 'url' in o['fields']}
     for k, s in snap.items():
         if 'adsabs' in s['url'] and k not in merged_away and k not in url_set:
