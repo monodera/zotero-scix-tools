@@ -9,6 +9,7 @@ Round 1 (after 1_resolve.js):
       P: look for a separately indexed published version
 Round 2 (after a first build_plan.py run):
   * items still unresolved: same as A/B but without the year restriction
+  * items that the extra searches matched only to an e-print record: P, as in round 1
     (PDF-derived metadata often has a wrong year)
 
 Usage:
@@ -72,6 +73,10 @@ def main():
         res = json.load(open(rp, encoding='utf-8'))
         for k, r in res.items():
             s = D.snap[k]
+            if r['method'] == 'title2' and not is_pub(D.docs[r['bib']]) and D.qr.get(k + '|P') is None:
+                # 追加検索（A〜D）で e-print にだけ一致した場合も、出版版を探す
+                pub_query(k, s, D.docs[r['bib']])
+                continue
             if r['bib'] or not s['title'] or s['type'] == 'webpage':
                 continue
             w = words(s['title'], 8)
