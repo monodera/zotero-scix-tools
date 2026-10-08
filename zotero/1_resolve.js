@@ -203,7 +203,8 @@ for (const s of Object.values(snap)) {
 }
 
 // ---------- phase 2: title search for unmatched ----------
-const STOP = new Set('the of and a an in on for with from to at by as its is are be or via using new'.split(' '));
+// python/scix_common.py の STOP と揃える（全語必須の検索なので、一般的な語が1つあるだけで結果が左右される）
+const STOP = new Set('the of and a an in on for with from to at by as its is are be or via using new near not into than their our this that'.split(' '));
 function titleWords(t) {
   t = t.replace(/<[^>]+>/g, ' ').replace(/\$[^$]*\$/g, ' ').replace(/\\[a-zA-Z]+/g, ' ')
        .normalize('NFKD').replace(/[̀-ͯ]/g, '');
