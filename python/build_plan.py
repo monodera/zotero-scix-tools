@@ -22,7 +22,7 @@ import re
 from urllib.parse import quote, unquote
 
 from scix_common import (DEFAULT_WORKDIR, PUB_OK, Data, accept_title, au_ok, dtitle, is_pub, lastname,
-                         nn, own_ax, pick_hit, pub_doi, title_accept, tsim)
+                         nn, norm, own_ax, pick_hit, pub_doi, title_accept, tsim)
 
 TYPE_MAP = {'article': 'journalArticle', 'inproceedings': 'conferencePaper'}
 PAPER_TYPES = ('preprint', 'journalArticle', 'conferencePaper', 'webpage')
@@ -137,7 +137,7 @@ def main():
     # series papers (I, II, III...) matched only by a truncated title are ambiguous
     for k, r in RES.items():
         if r['method'] in ('title', 'title2'):
-            zt, dt = norm_title(snap[k]['title']), norm_title(dtitle(docs[r['bib']]))
+            zt, dt = norm(snap[k]['title']), norm(dtitle(docs[r['bib']]))
             if dt.startswith(zt) and re.search(r'\b(i|ii|iii|iv|v|vi|vii|viii|ix|x|paper)\b', dt[len(zt):]):
                 REVIEW['タイトルが途中までしか一致しない連番論文（I, II…の取り違えに注意）'].append((k, r['bib'], r['sim']))
 
@@ -433,11 +433,6 @@ def main():
     print('照合方法:', dict(collections.Counter(r['method'] for r in RES.values())))
     print('出版版PDFの差し替え候補:', len(PDF))
     print('要確認:', {k: len(v) for k, v in REVIEW.items() if v}, '→ review.html')
-
-
-def norm_title(t):
-    from scix_common import norm
-    return norm(t)
 
 
 def write_review(W, REVIEW, snap, docs, STATS, MERGES):
