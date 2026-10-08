@@ -193,8 +193,12 @@ def main():
             if mg[0] in g:
                 g = [mg[0]] + [x for x in g if x != mg[0]]
         m = g[0]
-        if any(frozenset((m, x)) in nomerge for x in g[1:]):
-            continue
+        if any(p <= set(g) for p in nomerge):
+            # 識別子のつながりのどこが誤りかは判断できないので、自動ではマージしない
+            REVIEW['nomerge 指定を含む重複グループ（manual.json の merge で明示したもの以外はマージしない）'].append(g)
+            g = [m] + [x for x in g[1:] if frozenset((m, x)) in forced]
+            if len(g) < 2 or any(p <= set(g) for p in nomerge):
+                continue
         weak = [x for x in g[1:] if frozenset((m, x)) not in forced
                 and tsim(snap[m]['title'], snap[x]['title']) < 0.5
                 and not (set(snap[m]['ids']['ax']) & set(snap[x]['ids']['ax']))
