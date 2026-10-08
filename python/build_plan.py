@@ -241,6 +241,7 @@ def main():
     OPS = [{'id': 'merge:' + m['master'], 'op': 'merge', 'master': m['master'], 'others': m['others']} for m in MERGES]
     MASTER_OF = {m['master']: m['others'] for m in MERGES}
     STATS = collections.Counter()
+    MDOI = {}   # manual.json で指定した DOI（PDF の一覧でも SciX の DOI より優先する）
 
     def arxiv_origin(s):
         return bool(s['ids']['ax']) and (s['type'] in ('preprint', 'webpage') or s['libraryCatalog'] == 'arXiv.org'
@@ -255,6 +256,7 @@ def main():
         mf = {kk: v for kk, v in (MANUAL.get('fields', {}).get(k) or {}).items() if v}
         mdoi = (mf.get('DOI') or '').lower()
         if mdoi:
+            MDOI[k] = mdoi
             s['ids']['doi'] = [mdoi] + [x for x in s['ids']['doi'] if x != mdoi]
             # URL 欄が DOI のリンクなら、指定した DOI のリンクにする（URL を明示していればそちらを優先）
             if 'url' not in mf and re.match(r'https?://(dx\.)?doi\.org/', s['url'] or '', re.I):
@@ -403,9 +405,10 @@ def main():
         grp = [k] + MASTER_OF.get(k, [])
         b = RES[k]['bib']
         d = docs.get(b) if b else None
-        if d and is_pub(d) and pub_doi(d) and any(snap[x]['ids']['ax'] for x in grp) and any(npdf(snap[x]) for x in grp):
-            PDF.append({'key': k, 'doi': pub_doi(d), 'bibcode': b, 'pubPdf': 'PUB_PDF' in (d.get('esources') or []),
-                        'prefix': pub_doi(d).split('/')[0]})
+        pd = d and (MDOI.get(k) or pub_doi(d))
+        if d and is_pub(d) and pd and any(snap[x]['ids']['ax'] for x in grp) and any(npdf(snap[x]) for x in grp):
+            PDF.append({'key': k, 'doi': pd, 'bibcode': b, 'pubPdf': 'PUB_PDF' in (d.get('esources') or []),
+                        'prefix': pd.split('/')[0]})
 
     plan = {'generated': D.raw.get('generated'), 'ops': OPS, 'pdf': PDF}
     json.dump(plan, open(os.path.join(W, 'plan.json'), 'w', encoding='utf-8'))
