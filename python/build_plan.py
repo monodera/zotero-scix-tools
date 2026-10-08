@@ -196,9 +196,12 @@ def main():
         if any(p <= set(g) for p in nomerge):
             # 識別子のつながりのどこが誤りかは判断できないので、自動ではマージしない
             REVIEW['nomerge 指定を含む重複グループ（manual.json の merge で明示したもの以外はマージしない）'].append(g)
-            g = [m] + [x for x in g[1:] if frozenset((m, x)) in forced]
-            if len(g) < 2 or any(p <= set(g) for p in nomerge):
-                continue
+            for mg in MANUAL.get('merge', []):
+                if mg[0] in g and not any(p <= set(mg) for p in nomerge) \
+                        and not (set(mg) & (merged_away | {x['master'] for x in MERGES})):
+                    MERGES.append({'master': mg[0], 'others': mg[1:]})
+                    merged_away.update(mg[1:])
+            continue
         weak = [x for x in g[1:] if frozenset((m, x)) not in forced
                 and tsim(snap[m]['title'], snap[x]['title']) < 0.5
                 and not (set(snap[m]['ids']['ax']) & set(snap[x]['ids']['ax']))
