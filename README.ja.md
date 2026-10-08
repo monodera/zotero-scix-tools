@@ -78,7 +78,7 @@ python3 build_plan.py
 `~/Zotero/scix-work/review.html` を開いて確認します。アイテムキーをクリックすると、Zotero でそのアイテムが開きます。
 
 - まだ見つからないものが多ければ、`python3 make_queries.py --round 2` → `2_query.js` → `build_plan.py` をもう一度回します。年を条件から外して検索し直します。
-- 対応付けを直したいとき、マージしたくない組があるとき、手で調べたリンクを付けたいときは、`examples/manual.example.json` を参考に `scix-work/manual.json` を書いて、`build_plan.py` を再実行します。
+- 対応付けを直したいとき、マージしたくない組があるとき、手で調べたリンクを付けたいときは、`examples/manual.example.json` を参考に `scix-work/manual.json` を書いて、`build_plan.py` を再実行します。`fields` に書いた値は、アイテムの既存の値や SciX 由来の値より優先して設定されます。ただし `3_apply.js` は `apply-log.jsonl` に記録済みの操作を再実行しないので、一度更新したアイテムに後から `fields` を追加しても反映されません。その場合は Zotero 上で直接修正してください。
 
 ### 3. 適用
 

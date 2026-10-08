@@ -241,6 +241,7 @@ def main():
     OPS = [{'id': 'merge:' + m['master'], 'op': 'merge', 'master': m['master'], 'others': m['others']} for m in MERGES]
     MASTER_OF = {m['master']: m['others'] for m in MERGES}
     STATS = collections.Counter()
+    MDOI = {}   # manual.json で指定した DOI（PDF の一覧でも SciX の DOI より優先する）
 
     def arxiv_origin(s):
         return bool(s['ids']['ax']) and (s['type'] in ('preprint', 'webpage') or s['libraryCatalog'] == 'arXiv.org'
@@ -251,14 +252,18 @@ def main():
         b = RES[k]['bib']
         d = docs.get(b) if b else None
         axs = sorted({x for y in [k] + MASTER_OF.get(k, []) for x in snap[y]['ids']['ax']})
+        # manual.json の fields は、既存の値・SciX 由来の値より優先して設定する
+        mf = {kk: v for kk, v in (MANUAL.get('fields', {}).get(k) or {}).items() if v}
+        mdoi = (mf.get('DOI') or '').lower()
+        if mdoi:
+            MDOI[k] = mdoi
+            s['ids']['doi'] = [mdoi] + [x for x in s['ids']['doi'] if x != mdoi]
+            # URL 欄が DOI のリンクなら、指定した DOI のリンクにする（URL を明示していればそちらを優先）
+            if 'url' not in mf and re.match(r'https?://(dx\.)?doi\.org/', s['url'] or '', re.I):
+                mf['url'] = 'https://doi.org/' + mdoi
         if d is None:
-            mf = MANUAL.get('fields', {}).get(k)
             if mf:
-                ff = {kk: v for kk, v in mf.items() if not s.get(kk)}
-                if ff:
-                    OPS.append({'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': ff, 'extraLines': [], 'tags': []})
-                if mf.get('DOI') and not s['ids']['doi']:
-                    s['ids']['doi'].append(mf['DOI'].lower())
+                OPS.append({'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': mf, 'extraLines': [], 'tags': []})
             if s['ids']['doi']:
                 OPS.append({'id': 'link:pub:' + k, 'op': 'link', 'key': k, 'title': 'Publisher',
                             'url': 'https://doi.org/' + s['ids']['doi'][0]})
@@ -306,13 +311,16 @@ def main():
             nt = clean_title(dtitle(d))
             if nt and tsim(s['title'], nt) < 0.995:
                 fields['title'] = nt
+        if mdoi and fields.get('url', '').startswith('https://doi.org/'):
+            fields['url'] = 'https://doi.org/' + mdoi
+        fields.update(mf)
         upd = {'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': {kk: v for kk, v in fields.items() if v},
                'extraLines': ['Bibcode: ' + b] + ([f'arXiv: {axs[0]}'] if axs else []), 'tags': tags}
         if set_type:
             upd['setType'] = set_type
         OPS.append(upd)
         OPS.append({'id': 'link:scix:' + k, 'op': 'link', 'key': k, 'title': 'NASA SciX', 'url': scix_url(b)})
-        pd = doi or (s['ids']['doi'][0] if s['ids']['doi'] and not pub else None)
+        pd = mdoi or doi or (s['ids']['doi'][0] if s['ids']['doi'] and not pub else None)
         if pd:
             OPS.append({'id': 'link:pub:' + k, 'op': 'link', 'key': k, 'title': 'Publisher', 'url': 'https://doi.org/' + pd})
         STATS['SciX一致（出版版）' if pub else 'SciX一致（arXivのみ）'] += 1
@@ -397,9 +405,10 @@ def main():
         grp = [k] + MASTER_OF.get(k, [])
         b = RES[k]['bib']
         d = docs.get(b) if b else None
-        if d and is_pub(d) and pub_doi(d) and any(snap[x]['ids']['ax'] for x in grp) and any(npdf(snap[x]) for x in grp):
-            PDF.append({'key': k, 'doi': pub_doi(d), 'bibcode': b, 'pubPdf': 'PUB_PDF' in (d.get('esources') or []),
-                        'prefix': pub_doi(d).split('/')[0]})
+        pd = d and (MDOI.get(k) or pub_doi(d))
+        if d and is_pub(d) and pd and any(snap[x]['ids']['ax'] for x in grp) and any(npdf(snap[x]) for x in grp):
+            PDF.append({'key': k, 'doi': pd, 'bibcode': b, 'pubPdf': 'PUB_PDF' in (d.get('esources') or []),
+                        'prefix': pd.split('/')[0]})
 
     plan = {'generated': D.raw.get('generated'), 'ops': OPS, 'pdf': PDF}
     json.dump(plan, open(os.path.join(W, 'plan.json'), 'w', encoding='utf-8'))

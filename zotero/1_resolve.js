@@ -29,7 +29,7 @@ if (!TOKEN) return 'ERROR: APIトークンが未設定です（CFG.token また�
 const win = Zotero.getMainWindow();
 const sleep = ms => new Promise(r => win.setTimeout(r, ms));
 const FL = 'bibcode,identifier,doi,title,author,year,pubdate,pub,pub_raw,bibstem,volume,issue,page,page_range,doctype,property,esources';
-const stats = { requests: 0, errors: [], rateRemaining: null };
+const stats = { requests: 0, errors: [], rateRemaining: null, rateReset: null };
 
 // ---------- progress ----------
 let pw = null, pline = null;
@@ -43,6 +43,7 @@ const progress = (txt, pct) => { try { pline.setText(txt); if (pct != null) plin
 
 // ---------- HTTP ----------
 async function ads(params) {
+  let n429 = 0;
   const url = CFG.api + '?' + new URLSearchParams(params).toString();
   for (let attempt = 0; attempt < 5; attempt++) {
     let xhr;
@@ -55,9 +56,19 @@ async function ads(params) {
     stats.requests++;
     const rem = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Remaining');
     if (rem != null) stats.rateRemaining = +rem;
+    const reset = xhr.getResponseHeader && xhr.getResponseHeader('X-RateLimit-Reset');
+    if (reset != null) stats.rateReset = +reset;
     if (xhr.status === 200) { await sleep(CFG.delayMs); return JSON.parse(xhr.responseText); }
     if (xhr.status === 401 || xhr.status === 403) throw new Error('認証エラー(' + xhr.status + ')：トークンを確認してください');
-    if (xhr.status === 429) { progress('rate limited, waiting 60s…'); await sleep(60000); continue; }
+    if (xhr.status === 429) {
+      // 1日の上限を使い切った場合は待っても回復しない（残り回数のヘッダーがない場合に備え、429 が続いたときも）。
+      // このスクリプトは途中再開できないので、resolve.json を書かずに止める
+      if (stats.rateRemaining === 0 || ++n429 >= 5) {
+        const at = stats.rateReset ? new Date(stats.rateReset * 1000).toLocaleString() : '不明';
+        throw new Error(`1日のリクエスト上限に達しました（リセット: ${at}）。リセット後に最初から実行してください`);
+      }
+      progress('rate limited, waiting 60s…'); await sleep(60000); continue;
+    }
     if (xhr.status >= 500) { await sleep(5000 * (attempt + 1)); continue; }
     stats.errors.push({ status: xhr.status, q: params.q.slice(0, 300), body: (xhr.responseText || '').slice(0, 300) });
     return null;
