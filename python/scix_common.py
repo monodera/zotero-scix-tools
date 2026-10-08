@@ -47,14 +47,18 @@ class Data:
 
 
 # ---------------- text helpers ----------------
-def norm(t):
+def plain(t):
+    """Lower-case text without HTML tags, TeX math/commands and accents."""
     t = html.unescape(t or '')
     t = re.sub(r'<[^>]+>', ' ', t)
     t = re.sub(r'\$[^$]*\$', ' ', t)
     t = re.sub(r'\\[a-zA-Z]+', ' ', t)
     t = unicodedata.normalize('NFKD', t)
-    t = ''.join(ch for ch in t if not unicodedata.combining(ch))
-    return ' '.join(re.findall(r'[a-z0-9]+', t.lower()))
+    return ''.join(ch for ch in t if not unicodedata.combining(ch)).lower()
+
+
+def norm(t):
+    return ' '.join(re.findall(r'[a-z0-9]+', plain(t)))
 
 
 def nn(s):
@@ -81,14 +85,8 @@ def lastname(d):
 
 
 def words(t, n=10):
-    t = html.unescape(t or '')
-    t = re.sub(r'<[^>]+>', ' ', t)
-    t = re.sub(r'\$[^$]*\$', ' ', t)
-    t = re.sub(r'\\[a-zA-Z]+', ' ', t)
-    t = unicodedata.normalize('NFKD', t)
-    t = ''.join(ch for ch in t if not unicodedata.combining(ch)).lower()
     out = []
-    for x in re.findall(r'[a-z0-9]+', t):
+    for x in re.findall(r'[a-z0-9]+', plain(t)):
         if len(x) >= 3 and x not in STOP and not x.isdigit() and x not in out:
             out.append(x)
     return out[:n]

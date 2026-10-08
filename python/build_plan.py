@@ -22,7 +22,7 @@ import re
 from urllib.parse import quote, unquote
 
 from scix_common import (DEFAULT_WORKDIR, PUB_OK, Data, accept_title, au_ok, dtitle, is_pub, lastname,
-                         nn, own_ax, pick_hit, pub_doi, title_accept, tsim)
+                         nn, norm, own_ax, pick_hit, pub_doi, title_accept, tsim)
 
 TYPE_MAP = {'article': 'journalArticle', 'inproceedings': 'conferencePaper'}
 PAPER_TYPES = ('preprint', 'journalArticle', 'conferencePaper', 'webpage')
@@ -137,7 +137,7 @@ def main():
     # series papers (I, II, III...) matched only by a truncated title are ambiguous
     for k, r in RES.items():
         if r['method'] in ('title', 'title2'):
-            zt, dt = norm_title(snap[k]['title']), norm_title(dtitle(docs[r['bib']]))
+            zt, dt = norm(snap[k]['title']), norm(dtitle(docs[r['bib']]))
             if dt.startswith(zt) and re.search(r'\b(i|ii|iii|iv|v|vi|vii|viii|ix|x|paper)\b', dt[len(zt):]):
                 REVIEW['タイトルが途中までしか一致しない連番論文（I, II…の取り違えに注意）'].append((k, r['bib'], r['sim']))
 
@@ -377,10 +377,15 @@ def main():
     scix_link = {o['key']: o for o in OPS if o['id'].startswith('link:scix:')}
     owner = {x: m for m, xs in MASTER_OF.items() for x in xs}   # マージ後に添付が移る先
     for k, s in snap.items():
-        if 'adsabs' in s['url'] and k not in merged_away and k not in url_set:
-            t = ads2scix(s['url'])
+        # URL 欄が空なら、3_apply.js の merge でマージ元の（最初の空でない）URL がコピーされるので、それも対象にする
+        url = s['url'] or next((snap[x]['url'] for x in MASTER_OF.get(k, []) if snap[x]['url']), '')
+        if 'adsabs' in url and k not in merged_away and k not in url_set:
+            t = ads2scix(url)
             if t:
-                OPS.append({'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': s['url'], 'to': t})
+                op = {'id': 'url:' + k, 'op': 'setUrl', 'key': k, 'from': url, 'to': t}
+                if not s['url']:
+                    op['afterMerge'] = True   # dry run ではマージしないので、URL 欄は空のまま
+                OPS.append(op)
                 STATS['ADS→SciX（URL欄）'] += 1
         lk = scix_link.get(owner.get(k, k))
         for x in s['atts']:
@@ -389,6 +394,8 @@ def main():
                         and same_paper(x['url'], RES[owner.get(k, k)]['bib']):
                     # 同じ論文を指す ADS リンクなら、SciX リンクを新しく足すと重複するので、これを SciX リンクに書き換える
                     lk['adopt'] = x['key']
+                    if k in owner:
+                        lk['adoptAfterMerge'] = True   # dry run ではマージしないので、添付はまだマージ元にある
                     STATS['ADS→SciX（リンク添付）'] += 1
                     continue
                 t = ads2scix(x['url'])
@@ -431,11 +438,6 @@ def main():
     print('照合方法:', dict(collections.Counter(r['method'] for r in RES.values())))
     print('出版版PDFの差し替え候補:', len(PDF))
     print('要確認:', {k: len(v) for k, v in REVIEW.items() if v}, '→ review.html')
-
-
-def norm_title(t):
-    from scix_common import norm
-    return norm(t)
 
 
 def write_review(W, REVIEW, snap, docs, STATS, MERGES):

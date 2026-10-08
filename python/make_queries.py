@@ -9,6 +9,7 @@ Round 1 (after 1_resolve.js):
       P: look for a separately indexed published version
 Round 2 (after a first build_plan.py run):
   * items still unresolved: same as A/B but without the year restriction
+  * items that the extra searches matched only to an e-print record: P, as in round 1
     (PDF-derived metadata often has a wrong year)
 
 Usage:
@@ -30,6 +31,15 @@ def main():
     D = Data(a.workdir)
     qs = []
 
+    def pub_query(k, s, d):
+        # e-print only: is the published version indexed as a separate record?
+        w = words(dtitle(d) or s['title'])
+        la = lastname(d) or s['firstAuthor']
+        if la and len(w) >= 2:
+            qs.append({'id': k + '|P', 'key': k, 'rows': 5,
+                       'q': f"author:{qq('^' + la)} title:(" + ' OR '.join(w) +
+                            f") year:{d.get('year')}-2100 -doctype:eprint"})
+
     if a.round == 1:
         for k, s in D.snap.items():
             if s['type'] == 'webpage' and not s['ids']['ax']:
@@ -37,17 +47,16 @@ def main():
             b, _ = pick_hit(D, k)
             if b:
                 d = D.docs[b]
-                if is_pub(d):
-                    continue
-                # e-print only: is the published version indexed as a separate record?
-                w = words(dtitle(d) or s['title'])
-                la = lastname(d) or s['firstAuthor']
-                if la and len(w) >= 2:
-                    qs.append({'id': k + '|P', 'key': k, 'rows': 5,
-                               'q': f"author:{qq('^' + la)} title:(" + ' OR '.join(w) +
-                                    f") year:{d.get('year')}-2100 -doctype:eprint"})
+                if not is_pub(d):
+                    pub_query(k, s, d)
                 continue
-            if title_accept(D, k) or not s['title']:
+            acc = title_accept(D, k)
+            if acc:
+                # タイトル検索で e-print にだけ一致した場合も、出版版を探す
+                if not is_pub(D.docs[acc[0]]):
+                    pub_query(k, s, D.docs[acc[0]])
+                continue
+            if not s['title']:
                 continue
             w = words(s['title'])
             if len(w) < 2:
@@ -64,6 +73,10 @@ def main():
         res = json.load(open(rp, encoding='utf-8'))
         for k, r in res.items():
             s = D.snap[k]
+            if r['method'] == 'title2' and not is_pub(D.docs[r['bib']]) and D.qr.get(k + '|P') is None:
+                # 追加検索（A〜D）で e-print にだけ一致した場合も、出版版を探す
+                pub_query(k, s, D.docs[r['bib']])
+                continue
             if r['bib'] or not s['title'] or s['type'] == 'webpage':
                 continue
             w = words(s['title'], 8)
