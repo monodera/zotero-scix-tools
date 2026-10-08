@@ -91,7 +91,7 @@ catch (e) { saveErr = e; }
 progress('done'); try { pw.startCloseTimer(8000); } catch (e) {}
 if (runErr || saveErr) {
   const msg = e => String(e && e.message || e);
-  throw new Error([runErr && msg(runErr), saveErr && `query-results.json の保存に失敗しました: ${msg(saveErr)}`].filter(Boolean).join(' / '));
+  throw new Error(badNote + [runErr && msg(runErr), saveErr && `query-results.json の保存に失敗しました: ${msg(saveErr)}`].filter(Boolean).join(' / '));
 }
 const left = input.queries.filter(q => results[q.id] == null).length;
 const n4xx = new Set(stats.errors.filter(e => typeof e.status === 'number').map(e => e.id)).size;
