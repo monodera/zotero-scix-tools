@@ -54,7 +54,9 @@ examples/manual.example.json   手動で対応を指定するファイルの例
 3. 作業ディレクトリを作り、API トークンを保存します。
    ```bash
    mkdir -p ~/Zotero/scix-work
-   printf '%s' 'YOUR_SCIX_TOKEN' > ~/Zotero/scix-work/ads_token.txt
+   read -rs SCIX_TOKEN   # トークンを貼り付けて Enter（画面にもシェルの履歴にも残りません）
+   (umask 077; printf '%s' "$SCIX_TOKEN" > ~/Zotero/scix-work/ads_token.txt)   # 自分だけが読めるファイルにする
+   unset SCIX_TOKEN
    ```
 
 スクリプトの実行方法は、どれも共通です。Zotero → ツール → 開発者 → **Run JavaScript** を開き、**「Run as async function」にチェック**を入れます。スクリプトの全文を貼り付けて（macOS なら `pbcopy < zotero/1_resolve.js` → ⌘V）、Run を押します。設定は各スクリプトの冒頭にある `CFG` で変えられます。

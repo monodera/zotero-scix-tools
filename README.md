@@ -64,7 +64,9 @@ Settings are in the `CFG` block at the top of each script.
 
 ```bash
 mkdir -p ~/Zotero/scix-work
-printf '%s' 'YOUR_SCIX_TOKEN' > ~/Zotero/scix-work/ads_token.txt
+read -rs SCIX_TOKEN   # paste the token and press Enter (it is not echoed or saved in shell history)
+(umask 077; printf '%s' "$SCIX_TOKEN" > ~/Zotero/scix-work/ads_token.txt)   # readable only by you
+unset SCIX_TOKEN
 ```
 
 ### 1. Match (read-only)

@@ -6,7 +6,8 @@
 // 実行方法: Zotero > ツール > 開発者 > Run JavaScript
 //           「Run as async function」にチェックを入れ、全文を貼り付けて Run
 // 出力:     ~/Zotero/scix-work/resolve.json
-// トークン: 下の CFG.token に貼るか、~/Zotero/scix-work/ads_token.txt に1行で保存
+// トークン: ~/Zotero/scix-work/ads_token.txt に1行で保存（推奨）。CFG.token に書くなら Zotero に貼り付けた後の画面で書き、
+//           リポジトリのファイルには書かない（誤ってコミットしないように）
 // =====================================================================
 const CFG = {
   token: '',                 // SciX(ADS) API token（空なら ads_token.txt を読む）
