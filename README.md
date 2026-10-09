@@ -116,7 +116,7 @@ There are three kinds of follow-up work. Before any of them changes your library
 Do this whenever you have saved publisher versions with Zotero Connector. It needs none of the other steps and makes no SciX requests.
 
 1. Open `~/Zotero/scix-work/needs-pub-pdf.html` (made by `5_needs_list.js`) and save the papers from their DOI links with Zotero Connector. Each one becomes a new item.
-2. Run `6_absorb.js`, dry run first. It merges each new item into the existing item with the same DOI and, once a publisher PDF is attached, trashes the arXiv PDF (annotated PDFs are kept).
+2. Run `6_absorb.js`, dry run first. It merges each new item into the existing item with the same DOI and, once a publisher PDF is attached, trashes the arXiv PDF (annotated PDFs are kept). A new item whose title differs a lot from the existing one is not merged and is listed as `SKIP`, because the DOI may be wrong or shared by a whole proceedings volume.
    - Items added within the last `days` days (`CFG`, 7 by default) count as the newly saved ones. If you saved them longer ago, raise `days`. An item added within that window is never used as the existing one.
    - The existing item needs the publisher DOI in its DOI field. The items in the list normally do.
    - If two or more existing items have the same DOI, they are skipped (`SKIP(既存が複数)`). Merge those duplicates first, with B or by hand.
