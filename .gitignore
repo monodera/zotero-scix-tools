@@ -14,3 +14,8 @@ manual.json
 *.sqlite*
 __pycache__/
 .DS_Store
+
+# locally installed agent skills (e.g. security-audit); not part of this project
+.agents/
+.claude/skills/
+skills-lock.json
