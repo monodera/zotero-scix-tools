@@ -18,7 +18,7 @@ Items that are not in SciX get a Publisher link if they have a DOI. Anything lef
 ## Design
 
 - **Everything runs inside Zotero** through *Tools → Developer → Run JavaScript*. You do not need to quit Zotero, and the changes sync like ordinary edits.
-- **Plan first, then apply.** The pipeline runs match (read-only) → build plan (Python) → human review → apply. Applying supports a dry run, resumes after an interruption, and takes a database backup right before the first real run.
+- **Plan first, then apply.** The pipeline runs match (read-only) → build plan (Python) → human review → apply. Applying supports a dry run, resumes after an interruption, and takes a database backup right before every real run.
 - **No automated publisher downloads.** Major publishers (IOP/AAS, OUP, EDP, …) block automated access with bot management. Working around that breaches typical subscription terms and can get your whole institution's access suspended. Fetch publisher PDFs in your normal browser with Zotero Connector. For bulk access, ask your library about the publisher's text-and-data-mining (TDM) channel.
 
 ## Requirements
@@ -93,7 +93,7 @@ Open `~/Zotero/scix-work/review.html`. The item keys in it are `zotero://` links
 ### 3. Apply
 
 1. Run `3_apply.js` with `dryRun: true`. Details go to `dryrun-report.json`.
-2. Run it with `dryRun: false, limit: 5, only: ['merge']` and check the merges in Zotero. The first real run, when `apply-log.jsonl` does not exist yet, writes a backup to `scix-work/backup/`.
+2. Run it with `dryRun: false, limit: 5, only: ['merge']` and check the merges in Zotero. Every real run that has operations left to apply first writes a backup of the database to `scix-work/backup/`. Old backups are never deleted automatically, so remove the ones you no longer need by hand (keep the oldest one, taken before the first real run, until you are sure you will not start over).
 3. Run it with `limit: 0, only: null`. Operations that already ran are skipped (see `apply-log.jsonl`).
 
 Updated items are tagged `_scix:published-update`. Delete the tag once you have reviewed them.
@@ -109,7 +109,7 @@ The scripts tell an arXiv PDF from a publisher PDF by the arXiv stamp on pages 1
 
 ## After the first clean-up
 
-There are three kinds of follow-up work. Before any of them changes your library, quit Zotero and back up `zotero.sqlite`: `3_apply.js` makes its own backup only on its very first real run, when `apply-log.jsonl` does not exist yet. Always paste the scripts from the current version of this repository, not copies kept elsewhere.
+There are three kinds of follow-up work. Before any of them changes your library, quit Zotero and back up `zotero.sqlite`: `3_apply.js` makes its own backup before each real run, but `4_trash_arxiv_pdf.js`, `5_needs_list.js` and `6_absorb.js` do not. Always paste the scripts from the current version of this repository, not copies kept elsewhere.
 
 ### A. Publisher PDFs for papers already in your library
 
