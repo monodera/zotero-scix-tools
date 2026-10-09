@@ -37,7 +37,7 @@ def main():
         w = words(dtitle(d) or s['title'])
         la = lastname(d) or s['firstAuthor']
         yr = str(d.get('year') or '')
-        yr = f" year:{int(yr)}-2100" if yr.isdigit() else ''
+        yr = f" year:{int(yr)}-2100" if yr.isdecimal() else ''
         if la and len(w) >= 2:
             qs.append({'id': k + '|P', 'key': k, 'rows': 5,
                        'q': f"author:{qq('^' + la)} title:(" + ' OR '.join(w) + f"){yr} -doctype:eprint"})

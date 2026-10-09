@@ -70,12 +70,22 @@ def pages(d):
     return p if p and not p.lower().startswith('arxiv') else ''
 
 
-SERIES = re.compile(r'\b(?:i|ii|iii|iv|v|vi|vii|viii|ix|x|paper \w+)\b')
+# 連番論文の番号: 「Paper 2」「Part II」、または区切り（. : , ; ) - や末尾）の直前にある大文字のローマ数字
+SERIES = re.compile(r'\b(?:(?:paper|part)\s+([ivx]+|\d+)|([IVX]{1,4}))\b(?=\s*(?:[.:;,)\-\u2013\u2014]|$))', re.I)
+ELEMENT = re.compile(r'\[?[A-Z][a-z]?\]?$')   # 電離状態の前に来る元素記号（H, Mg, [O など）
 
 
 def series(t):
-    """連番論文の番号（I, II…, Paper 2 など）の並び"""
-    return SERIES.findall(norm(t))
+    """連番論文の番号（I, II…, Paper 2 など）の並び。電離状態（Mg II, [O III], C IV）は除く"""
+    t = re.sub(r'<[^>]+>', ' ', html.unescape(t or '')).strip()
+    out = []
+    for m in SERIES.finditer(t):
+        if m.group(2):
+            prev = t[:m.start()].split()
+            if not m.group(2).isupper() or (prev and ELEMENT.match(prev[-1])):
+                continue
+        out.append((m.group(1) or m.group(2)).lower())
+    return out
 
 
 def scix_url(b):
@@ -168,7 +178,8 @@ def main():
                 continue
             c = (tsim(dtitle(e), dtitle(d)), nn(lastname(e)) == nn(lastname(d)), d)
             # 連番論文（I, II…）は同じ著者・ほぼ同じタイトルの別の論文があるので、番号が違うものは候補にしない
-            (cands if series(dtitle(e)) == series(dtitle(d)) else ser_ng).append(c)
+            se, sd = series(dtitle(e)), series(dtitle(d))
+            (ser_ng if se and sd and se != sd else cands).append(c)
         cands.sort(key=lambda x: -x[0])
         if cands and cands[0][0] >= 0.9 and cands[0][1]:
             r.update(bib=cands[0][2]['bibcode'], method=r['method'] + '+pubrec', eprint=b)

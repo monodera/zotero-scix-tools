@@ -97,7 +97,7 @@ python3 build_plan.py
 1. `4_trash_arxiv_pdf.js`：まず dry-run、問題なければ `dryRun: false` で実行します。出版版 PDF と arXiv 版 PDF が両方あるアイテムから、arXiv 版をゴミ箱に移します。
 2. `5_needs_list.js`：出版版 PDF がないアイテムに `_scix:needs-pub-pdf` タグを付け、`needs-pub-pdf.html` / `.csv` を作ります。このタグの付け外ししかせず、再実行すると現在の状態に合わせて付け直すので、dry run はありません。
 3. HTML の DOI リンクから出版社のページを開き、Zotero Connector で保存します。保存したものは新しいアイテムになります。
-4. `6_absorb.js`：直近に保存したアイテムを DOI で既存アイテムに統合し、arXiv 版 PDF をゴミ箱に移します。まず dry-run で確認してください。
+4. `6_absorb.js`：直近に保存したアイテムを DOI で既存アイテムに統合し（タイトルが大きく異なるものは統合しません）、arXiv 版 PDF をゴミ箱に移します。まず dry-run で確認してください。
 
 PDF の判定は、1〜2 ページ目に arXiv の刻印（`arXiv:XXXX.XXXXXvN [astro-ph…]`）があるかどうかで行います。判定できないもの（画像だけの PDF など）には触れません。リンクファイルの場合、ゴミ箱を空にしても PDF のファイル自体はディスクに残ります。
 

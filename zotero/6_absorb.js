@@ -62,7 +62,6 @@ async function hasAnnotations(att) {
 const normDoi = d => (d || '').trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//, '');
 
 // タイトル類似度（python/scix_common.py の tsim と同じ：文字列の一致率 difflib.SequenceMatcher.ratio と単語の Jaccard の大きい方）
-// difflib の autojunk（200文字以上の文字列で頻出文字を無視する）は再現していない
 function plainTitle(t) {
   const ent = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
   t = String(t || '').replace(/&(?:#(\d+)|#x([0-9a-f]+)|(amp|lt|gt|quot|apos));/gi, (m, d, h, n) => {
@@ -76,6 +75,8 @@ const normTitle = t => (plainTitle(t).match(/[a-z0-9]+/g) || []).join(' ');
 function seqRatio(a, b) {
   const b2j = new Map();
   for (let j = 0; j < b.length; j++) { if (!b2j.has(b[j])) b2j.set(b[j], []); b2j.get(b[j]).push(j); }
+  // difflib の autojunk: b が200文字以上なら、出現回数が 1% + 1 を超える文字を索引から除く
+  if (b.length >= 200) { const ntest = Math.floor(b.length / 100) + 1; for (const [c, js] of b2j) if (js.length > ntest) b2j.delete(c); }
   let matched = 0;
   const queue = [[0, a.length, 0, b.length]];
   while (queue.length) {
@@ -92,6 +93,9 @@ function seqRatio(a, b) {
       }
       j2len = nj;
     }
+    // 索引から除いた文字で、見つかった一致を前後に延ばす（difflib と同じ）
+    while (bi > alo && bj > blo && a[bi - 1] === b[bj - 1]) { bi--; bj--; bk++; }
+    while (bi + bk < ahi && bj + bk < bhi && a[bi + bk] === b[bj + bk]) bk++;
     if (!bk) continue;
     matched += bk;
     if (alo < bi && blo < bj) queue.push([alo, bi, blo, bj]);

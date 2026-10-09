@@ -190,7 +190,10 @@ let ops = plan.ops.filter(o => !done.has(o.id) && (!CFG.only || CFG.only.include
 if (CFG.limit) ops = ops.slice(0, CFG.limit);
 // 古いバックアップは自動では消さない（不要になったものは scix-work/backup/ から手で削除する）
 let BACKUP = null;
-if (!CFG.dryRun && ops.length) BACKUP = await backupDB('pre-apply');
+if (!CFG.dryRun && ops.length) {
+  try { BACKUP = await backupDB('pre-apply'); }
+  catch (e) { try { pw.close(); } catch (e2) {} throw e; }
+}
 const cnt = {};
 for (let i = 0; i < ops.length; i++) {
   const op = ops[i];

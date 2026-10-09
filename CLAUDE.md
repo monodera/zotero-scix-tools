@@ -40,7 +40,7 @@ Key conventions:
 
 - **Each Zotero script must be self-contained** because it is pasted into Zotero individually. Helpers such as the SciX HTTP wrapper (`ads()` with 429/5xx retry), progress window, `log()` to `*.jsonl`, and the arXiv-vs-publisher PDF classifier (`STAMP` regex on pages 1–2, `classify`, `hasFileAnnotations`) are intentionally duplicated across files — when fixing one copy, fix all copies.
 - Python shared logic (title normalization/similarity, hit acceptance, `is_pub`, `pub_doi`, `own_ax`, the SciX field list `FL`) lives in `python/scix_common.py`. `FL` must match the `FL` constant in the JS scripts.
-- `6_absorb.js` carries a JS port of `scix_common.tsim` (`plainTitle`/`normTitle`/`seqRatio`/`tsim`, a faithful port of `difflib.SequenceMatcher.ratio` without autojunk); keep the two in sync.
+- `6_absorb.js` carries a JS port of `scix_common.tsim` (`plainTitle`/`normTitle`/`seqRatio`/`tsim`, a faithful port of `difflib.SequenceMatcher.ratio` including autojunk); keep the two in sync.
 - Each JS script's settings are in a `CFG` block at the top; `3_apply.js`, `4_trash_arxiv_pdf.js` and `6_absorb.js` default to `dryRun: true` (`5_needs_list.js` has no `CFG` and edits tags directly).
 - Tags written to the library use the `_scix:` prefix (`_scix:published-update`, `_scix:needs-pub-pdf`, `_scix:pdf-published`, `_scix:arxiv-pdf-annotated`).
 - GitHub Issues and PRs for this repo are written in Japanese.
