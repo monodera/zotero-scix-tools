@@ -128,15 +128,15 @@ Nothing is needed when you add a paper. Every one to three months, run the whole
 
 1. Back up `zotero.sqlite`, and keep `scix-work/apply-log.jsonl`.
 2. Run steps 1–3 above. `make_queries.py` writes a new `queries.json`, and `2_query.js` then runs all of its queries again instead of reusing last time's results. If `2_query.js` stops part-way (for example at the daily limit), running it again continues where it stopped.
-3. `3_apply.js` skips operations already recorded in `apply-log.jsonl`. Papers added since the last run are processed as in the first run, including merges into copies you already have. Papers that SciX now matches to a different record than last time — typically arXiv e-prints that have since been published — are updated to the new record, including their "NASA SciX" and "Publisher" links.
+3. `3_apply.js` skips operations that `apply-log.jsonl` records as done (`ok` or `noop`); ones that were skipped or failed are tried again. Papers added since the last run are processed as in the first run, including merges with copies you already have (which item is kept is decided as in the first run). Papers that SciX now matches to a different record than last time — typically arXiv e-prints that have since been published — are updated to the new record, including their "NASA SciX" and "Publisher" links.
 4. Run `4_trash_arxiv_pdf.js` (dry run first) and `5_needs_list.js`, then fetch the publisher PDFs with A.
 
 ### C. Going over the whole library again
 
 For example after updating these scripts.
 
-- **Usually, run B.** With `apply-log.jsonl` kept, what gets applied is papers added since the last run, papers whose SciX match changed, and kinds of operations that did not exist before. Operations already recorded are not redone, even if the updated scripts would now produce a different result for them.
-- **To start over from scratch**, quit Zotero, put the backup taken right before the first real run (`scix-work/backup/zotero.sqlite.pre-apply-…`) back as `zotero.sqlite`, move `apply-log.jsonl` aside, and follow the steps from the beginning. Everything you changed in the library after that backup is lost. If you use Zotero sync, mind the server-side state.
+- **Usually, run B.** With `apply-log.jsonl` kept, what gets applied is papers added since the last run, papers whose SciX match changed, and operations the previous plan did not contain (for example a merge or an ADS replacement that the updated scripts now find). Operations already recorded as done are not redone, even if the updated scripts would now produce a different result for them.
+- **To start over from scratch**, quit Zotero, put the backup taken right before the first real run (the oldest `scix-work/backup/zotero.sqlite.pre-apply-…`) back as `zotero.sqlite`, move `apply-log.jsonl` aside, and follow the steps from the beginning. Everything you changed in the library after that backup is lost. If you use Zotero sync, mind the server-side state.
 - Moving only `apply-log.jsonl` aside, without restoring the backup, makes `3_apply.js` update every item again: values you corrected by hand are overwritten and the `_scix:published-update` tag comes back. Do this only if that is what you want.
 
 ## Notes
