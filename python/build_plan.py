@@ -31,6 +31,7 @@ LINKED_URL = 3   # Zotero.Attachments.LINK_MODE_LINKED_URL
 ADSURL = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/[!#-;=?-~]*')
 # bibcode は19文字ちょうど。& は &amp; / %26、. は %2E になりうる
 BIBPAT = r'[0-9]{4}(?:[A-Za-z0-9.]|&amp;|&|%26|%2[Ee]){15}'
+BIBOK = re.compile(r'[0-9]{4}[A-Za-z0-9.&]{15}')   # SciX の bibcode そのもの（Extra に書いてよい形）
 ADSBIBHEAD = re.compile(r'https?://(?:ui\.)?adsabs\.harvard\.edu/(?:abs|link_gateway|cgi-bin/nph-data_query\?bibcode=)/?'
                         r'(' + BIBPAT + r')')
 ADSBIB = re.compile(ADSBIBHEAD.pattern + r'(?:[/?#&]|$)')
@@ -67,6 +68,14 @@ def pages(d):
         return d['page_range']
     p = (d.get('page') or [None])[0]
     return p if p and not p.lower().startswith('arxiv') else ''
+
+
+SERIES = re.compile(r'\b(?:i|ii|iii|iv|v|vi|vii|viii|ix|x|paper \w+)\b')
+
+
+def series(t):
+    """連番論文の番号（I, II…, Paper 2 など）の並び"""
+    return SERIES.findall(norm(t))
 
 
 def scix_url(b):
@@ -148,7 +157,7 @@ def main():
             continue
         e = docs[b]
         eax = own_ax(e)
-        cands = []
+        cands, ser_ng = [], []
         for d in QR.get(k + '|P') or []:
             if d.get('doctype') not in PUB_OK or re.search(r'erratum|corrigendum', dtitle(d), re.I):
                 continue
@@ -157,14 +166,19 @@ def main():
             dax = own_ax(d)
             if dax and eax and not (dax & eax):
                 continue
-            cands.append((tsim(dtitle(e), dtitle(d)), nn(lastname(e)) == nn(lastname(d)), d))
+            c = (tsim(dtitle(e), dtitle(d)), nn(lastname(e)) == nn(lastname(d)), d)
+            # 連番論文（I, II…）は同じ著者・ほぼ同じタイトルの別の論文があるので、番号が違うものは候補にしない
+            (cands if series(dtitle(e)) == series(dtitle(d)) else ser_ng).append(c)
         cands.sort(key=lambda x: -x[0])
-        if cands:
-            sm, au, d = cands[0]
-            if sm >= 0.9 and au:
-                r.update(bib=d['bibcode'], method=r['method'] + '+pubrec', eprint=b)
-            elif sm >= 0.6 and au:
-                REVIEW['arXiv版のみ一致・出版版らしき別レコードあり（タイトル変更の可能性）'].append((k, d['bibcode'], sm))
+        if cands and cands[0][0] >= 0.9 and cands[0][1]:
+            r.update(bib=cands[0][2]['bibcode'], method=r['method'] + '+pubrec', eprint=b)
+            continue
+        ng = [c for c in ser_ng if c[0] >= 0.9 and c[1]]
+        if ng:
+            sm, _, d = max(ng, key=lambda x: x[0])
+            REVIEW['arXiv版と、出版版らしき別レコードとで連番（I, II…）が異なる（置き換えない）'].append((k, d['bibcode'], sm))
+        elif cands and cands[0][0] >= 0.6 and cands[0][1]:
+            REVIEW['arXiv版のみ一致・出版版らしき別レコードあり（タイトル変更の可能性）'].append((k, cands[0][2]['bibcode'], cands[0][0]))
 
     # ---------- 2. duplicates ----------
     par = {k: k for k in snap}
@@ -348,7 +362,8 @@ def main():
             fields['url'] = 'https://doi.org/' + mdoi
         fields.update(mf)
         upd = {'id': 'upd:' + k + sfx, 'op': 'update', 'key': k, 'fields': {kk: v for kk, v in fields.items() if v},
-               'extraLines': ['Bibcode: ' + b] + ([f'arXiv: {axs[0]}'] if axs else []), 'tags': tags}
+               'extraLines': (['Bibcode: ' + b] if BIBOK.fullmatch(b) else []) + ([f'arXiv: {axs[0]}'] if axs else []),
+               'tags': tags}
         if set_type:
             upd['setType'] = set_type
         OPS.append(upd)
@@ -470,7 +485,7 @@ def write_review(W, REVIEW, snap, docs, STATS, MERGES):
 
     def item(k):
         s = snap[k]
-        return (f'<a href="zotero://select/library/items/{k}">{e(k)}</a> {e(s["firstAuthor"] or "")} '
+        return (f'<a href="zotero://select/library/items/{e(quote(k, safe=""))}">{e(k)}</a> {e(s["firstAuthor"] or "")} '
                 f'{e(str(s["year"] or ""))} — {e(s["title"][:120])}')
 
     def doc(b):
