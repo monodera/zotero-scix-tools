@@ -211,6 +211,10 @@ def main():
         if r['method'] != 'id':
             return False
         return bool(set(out[k]['hits'].get(r['bib']) or []) & {'ax', 'bib'}) or r['sim'] >= 0.5
+
+    def same_au(a, b):
+        fa, fb = nn(snap[a]['firstAuthor']), nn(snap[b]['firstAuthor'])
+        return bool(fa) and fa == fb
     MERGES, merged_away = [], set()
     for g in groups.values():
         if len(g) < 2:
@@ -229,10 +233,13 @@ def main():
                     MERGES.append({'master': mg[0], 'others': mg[1:]})
                     merged_away.update(mg[1:])
             continue
+        # タイトルが大きく異なっても、arXiv ID の共有か bibcode での強い一致があればマージする（改題された出版版など）。
+        # ただし Extra などに誤った識別子が書かれていることもあるので、第一著者も一致する場合に限る
         weak = [x for x in g[1:] if frozenset((m, x)) not in forced
                 and tsim(snap[m]['title'], snap[x]['title']) < 0.5
-                and not (set(snap[m]['ids']['ax']) & set(snap[x]['ids']['ax']))
-                and not (RES[m]['bib'] and RES[m]['bib'] == RES[x]['bib'] and id_strong(m) and id_strong(x))]
+                and not (same_au(m, x) and (
+                    set(snap[m]['ids']['ax']) & set(snap[x]['ids']['ax'])
+                    or (RES[m]['bib'] and RES[m]['bib'] == RES[x]['bib'] and id_strong(m) and id_strong(x))))]
         if weak:
             REVIEW['重複候補（識別子は共通だがタイトルが大きく異なる。マージしない）'].append(g)
             continue

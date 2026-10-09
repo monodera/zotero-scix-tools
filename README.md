@@ -6,7 +6,7 @@ These scripts clean up an astronomy-heavy Zotero library by matching it against 
 
 ## What it does
 
-- **Merges duplicates.** Items that share an arXiv ID, a DOI or a SciX bibcode are merged, including arXiv-preprint / published-version pairs. Items that only have similar titles are listed for review, not merged.
+- **Merges duplicates.** Items that share an arXiv ID, a DOI or a SciX bibcode are merged, including arXiv-preprint / published-version pairs. If the titles differ a lot, the items are merged only when the first author also matches and they share an arXiv ID or match the same SciX record by an identifier; otherwise they are listed for review. Items that only have similar titles are listed for review, not merged.
 - **Updates arXiv papers to the published version.** The item type becomes Journal Article or Conference Paper, and the journal, volume, issue, pages, date, DOI and title come from the published record. The arXiv ID is kept in Extra.
 - **Adds links.** Each matched item gets a "NASA SciX" link attachment and a "Publisher" link attachment (doi.org).
 - **Replaces ADS links with SciX links.** This covers the URL field, attachment URLs and notes.
