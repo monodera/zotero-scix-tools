@@ -93,7 +93,7 @@ Open `~/Zotero/scix-work/review.html`. The item keys in it are `zotero://` links
 ### 3. Apply
 
 1. Run `3_apply.js` with `dryRun: true`. Details go to `dryrun-report.json`.
-2. Run it with `dryRun: false, limit: 5, only: ['merge']` and check the merges in Zotero. The first real run writes a backup to `scix-work/backup/`.
+2. Run it with `dryRun: false, limit: 5, only: ['merge']` and check the merges in Zotero. The first real run, when `apply-log.jsonl` does not exist yet, writes a backup to `scix-work/backup/`.
 3. Run it with `limit: 0, only: null`. Operations that already ran are skipped (see `apply-log.jsonl`).
 
 Updated items are tagged `_scix:published-update`. Delete the tag once you have reviewed them.
@@ -107,11 +107,22 @@ Updated items are tagged `_scix:published-update`. Delete the tag once you have 
 
 The scripts tell an arXiv PDF from a publisher PDF by the arXiv stamp on pages 1–2 (`arXiv:XXXX.XXXXXvN [astro-ph…]`). PDFs they cannot classify, such as image-only scans, are left alone. If your PDFs are linked files, emptying the trash does not delete them from disk.
 
+## Routine runs
+
+After the first clean-up you can run the pipeline again whenever you like, for example every one to three months for the papers you have added from arXiv in the meantime. You don't need to do anything when you add a paper.
+
+1. Quit Zotero and back up `zotero.sqlite`. `3_apply.js` makes its own backup only on the very first real run, when `apply-log.jsonl` does not exist yet.
+2. Keep `scix-work/apply-log.jsonl`. It lets `3_apply.js` skip what it already applied. If you delete it, every item is updated again: values you corrected by hand are overwritten and the `_scix:published-update` tag comes back.
+3. Run steps 1–3 as before. `make_queries.py` writes a new `queries.json`, and `2_query.js` then runs all of its queries again instead of reusing last time's results. If `2_query.js` stops part-way (for example at the daily limit), running it again continues where it stopped.
+4. Items that SciX now matches to a different record than last time — typically arXiv e-prints that have since been published — are updated to the new record, including their "NASA SciX" and "Publisher" links. Everything else is skipped.
+5. For PDFs, run `5_needs_list.js` to refresh the list, save the publisher versions with Zotero Connector, then run `6_absorb.js`. `6_absorb.js` takes the items added within the last `days` days (`CFG`, 7 by default) as the newly saved ones and merges them into older items with the same DOI. If you saved them longer ago, raise `days`; an item added within that window is never used as the older one.
+
+Always paste the scripts from the current version of this repository, not copies kept elsewhere.
+
 ## Notes
 
 - The SciX API allows 5,000 requests per day. The scripts report how many remain.
 - Do not edit the affected items while applying. Items whose URL changed after planning are skipped.
-- You can rerun the whole pipeline periodically (for example, for papers you add from arXiv). Steps already applied are skipped, and an item that SciX now matches to a different record than last time — typically an arXiv e-print that has since been published — is updated to the new record.
 - To roll back, quit Zotero and put a file from `scix-work/backup/` back as `zotero.sqlite`. If you use Zotero sync, mind the server-side state.
 - Use at your own risk.
 
