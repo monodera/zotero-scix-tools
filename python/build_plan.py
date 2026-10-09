@@ -253,6 +253,14 @@ def main():
     STATS = collections.Counter()
     MDOI = {}   # manual.json で指定した DOI（PDF の一覧でも SciX の DOI より優先する）
 
+    def link_id(k, tag, title, url, target):
+        # 同じタイトルのリンクがあるのに URL が違う（前回と違うレコードに一致した、前回のリンク操作が途中で
+        # 終わらなかった）ときだけ、ID に目標を付けて記録済みの操作と区別する。リンクの状態で決めるので、
+        # 直ればまた従来の ID（記録済み）に戻る。マージで移ってくる添付も含めて見る
+        atts = [a for y in [k] + MASTER_OF.get(k, []) for a in snap[y]['atts'] if a['linkMode'] == LINKED_URL]
+        stale = not any(a['url'] == url for a in atts) and any(a['title'] == title for a in atts)
+        return f'link:{tag}:{k}' + ('@' + target if stale else '')
+
     def arxiv_origin(s):
         return bool(s['ids']['ax']) and (s['type'] in ('preprint', 'webpage') or s['libraryCatalog'] == 'arXiv.org'
                                          or 'arxiv.org' in s['url'])
@@ -283,6 +291,11 @@ def main():
                 REVIEW['リンクを付けられないアイテム（手作業で）'].append((k, None, None))
             continue
         pub, doi = is_pub(d), pub_doi(d)
+        # 前回の適用時と違うレコードに一致した（e-print → 出版版、manual.json での修正など）なら、apply-log.jsonl に
+        # 記録済みの操作と区別するため、update の ID に bibcode を付けて新しい操作にする。前回の bibcode は、
+        # 3_apply.js の update が Extra の先頭の「Bibcode: …」行に書く（マージで後ろに足される行はマージ元のもの）
+        m = re.search(r'^\s*Bibcode:\s*(\S+)', s['extra'] or '', re.M)
+        sfx = '@' + b if m and m.group(1) != b else ''
         fields, set_type, tags = {}, None, []
         if pub:
             target = TYPE_MAP.get(d.get('doctype'))
@@ -324,15 +337,17 @@ def main():
         if mdoi and fields.get('url', '').startswith('https://doi.org/'):
             fields['url'] = 'https://doi.org/' + mdoi
         fields.update(mf)
-        upd = {'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': {kk: v for kk, v in fields.items() if v},
+        upd = {'id': 'upd:' + k + sfx, 'op': 'update', 'key': k, 'fields': {kk: v for kk, v in fields.items() if v},
                'extraLines': ['Bibcode: ' + b] + ([f'arXiv: {axs[0]}'] if axs else []), 'tags': tags}
         if set_type:
             upd['setType'] = set_type
         OPS.append(upd)
-        OPS.append({'id': 'link:scix:' + k, 'op': 'link', 'key': k, 'title': 'NASA SciX', 'url': scix_url(b)})
+        OPS.append({'id': link_id(k, 'scix', 'NASA SciX', scix_url(b), b), 'op': 'link', 'key': k,
+                    'title': 'NASA SciX', 'url': scix_url(b)})
         pd = mdoi or doi or (s['ids']['doi'][0] if s['ids']['doi'] and not pub else None)
         if pd:
-            OPS.append({'id': 'link:pub:' + k, 'op': 'link', 'key': k, 'title': 'Publisher', 'url': 'https://doi.org/' + pd})
+            OPS.append({'id': link_id(k, 'pub', 'Publisher', 'https://doi.org/' + pd, pd), 'op': 'link', 'key': k,
+                        'title': 'Publisher', 'url': 'https://doi.org/' + pd})
         STATS['SciX一致（出版版）' if pub else 'SciX一致（arXivのみ）'] += 1
     for k, links in MANUAL.get('links', {}).items():
         for i, l in enumerate(links):
