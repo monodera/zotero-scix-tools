@@ -18,10 +18,10 @@ const OUT = PathUtils.join(DIR, 'query-results.json');
 const win = Zotero.getMainWindow();
 const sleep = ms => new Promise(r => win.setTimeout(r, ms));
 
-// 途中再開：既存結果があれば読み込んで未実行分とエラー（null）だけ実行
-let results = {}, badNote = '';
+// 既存の結果を読み込む。fetchedIn: 各クエリの結果をどの queries.json（作成日時）で取得したか
+let results = {}, fetchedIn = {}, badNote = '';
 if (await IOUtils.exists(OUT)) {
-  try { results = JSON.parse(await Zotero.File.getContentsAsync(OUT)).results || {}; }
+  try { const j = JSON.parse(await Zotero.File.getContentsAsync(OUT)); results = j.results || {}; fetchedIn = j.fetchedIn || {}; }
   catch (e) {   // 読めないファイルを上書きして失わないよう、退避してから最初から実行する
     const bad = OUT + '.bad-' + new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
     await IOUtils.move(OUT, bad);
@@ -77,8 +77,12 @@ async function ads(params, id) {
   return null;
 }
 
-// null（エラー）と未設定（日次上限で中断）のクエリは再実行時に再試行する。0件ヒットは [] で保存される
-const todo = input.queries.filter(q => results[q.id] == null);
+// 同じ queries.json での途中再開なら、null（エラー）と未設定（日次上限などで中断）のクエリだけを実行する。
+// make_queries.py で queries.json を作り直した（定期的に回し直す）場合は、前回の結果（0件の [] も）を使い回さない
+// よう、そこにあるクエリをすべて実行し直す。今の queries.json にないクエリの結果は残す（round 2 で round 1 の分）
+const batch = input.generated || null;
+const pending = q => results[q.id] == null || (batch && fetchedIn[q.id] !== batch);
+const todo = input.queries.filter(pending);
 let runErr = null, saveErr = null;
 try {
   for (let i = 0; i < todo.length; i++) {
@@ -87,18 +91,19 @@ try {
     const r = await ads({ q: q.q, fl: input.fl, rows: q.rows || 5, sort: 'score desc' }, q.id);
     if (stats.dailyLimit || stats.offline) break;
     results[q.id] = r && r.response ? r.response.docs : null;
-    if (i % 100 === 99) await Zotero.File.putContentsAsync(OUT, JSON.stringify({ results }));
+    if (batch) fetchedIn[q.id] = batch;
+    if (i % 100 === 99) await Zotero.File.putContentsAsync(OUT, JSON.stringify({ results, fetchedIn }));
   }
 } catch (e) { runErr = e; }
 // 認証エラーなどで中断しても、それまでの結果は保存する。保存の失敗で元のエラーが隠れないよう、両方を報告する
-try { await Zotero.File.putContentsAsync(OUT, JSON.stringify({ generated: new Date().toISOString(), stats, results })); }
+try { await Zotero.File.putContentsAsync(OUT, JSON.stringify({ generated: new Date().toISOString(), stats, results, fetchedIn })); }
 catch (e) { saveErr = e; }
 progress('done'); try { pw.startCloseTimer(8000); } catch (e) {}
 if (runErr || saveErr) {
   const msg = e => String(e && e.message || e);
   throw new Error(badNote + [runErr && msg(runErr), saveErr && `query-results.json の保存に失敗しました: ${msg(saveErr)}`].filter(Boolean).join(' / '));
 }
-const left = input.queries.filter(q => results[q.id] == null).length;
+const left = input.queries.filter(pending).length;
 const n4xx = new Set(stats.errors.filter(e => e.status >= 400 && e.status < 500).map(e => e.id)).size;
 const resetAt = stats.rateReset ? new Date(stats.rateReset * 1000).toLocaleString() : '不明';
 return badNote

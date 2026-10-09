@@ -24,25 +24,29 @@ class Data:
         self.snap = r['snap']
         self.out = r['out']
         self.docs = r['docs']
-        self.qr, qr_4xx = {}, set()
+        self.qr, qr_4xx, fetched_in = {}, set(), {}
         qp = os.path.join(workdir, 'query-results.json')
         if os.path.exists(qp):
             j = json.load(open(qp, encoding='utf-8'))
             self.qr = j.get('results', {})
+            fetched_in = j.get('fetchedIn', {})
             for v in self.qr.values():
                 for d in v or []:
                     self.docs.setdefault(d['bibcode'], d)
             # 前回の 2_query.js で 4xx（クエリ自体の問題）になったクエリ
             qr_4xx = {e.get('id') for e in (j.get('stats') or {}).get('errors', [])
                       if isinstance(e.get('status'), int) and 400 <= e['status'] < 500}
-        # queries.json にあるが結果がないクエリ。「一致なし」とは区別する
+        # queries.json にあるが結果がないクエリ。「一致なし」とは区別する。今の queries.json で取得していない
+        # 結果（作り直す前のもの）も、2_query.js がまだ実行し直していないので、結果がないものとして扱う
         #   qr_missing: エラー・未実行（2_query.js の再実行で取得できる見込み）
         #   qr_failed:  4xx（再実行しても失敗する可能性が高い）
         self.qr_missing, self.qr_failed = [], []
         qj = os.path.join(workdir, 'queries.json')
         if os.path.exists(qj):
-            for q in json.load(open(qj, encoding='utf-8')).get('queries', []):
-                if self.qr.get(q['id']) is None:
+            qd = json.load(open(qj, encoding='utf-8'))
+            batch = qd.get('generated')
+            for q in qd.get('queries', []):
+                if self.qr.get(q['id']) is None or (batch and fetched_in.get(q['id']) != batch):
                     (self.qr_failed if q['id'] in qr_4xx else self.qr_missing).append(q)
 
 

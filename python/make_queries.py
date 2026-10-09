@@ -16,6 +16,7 @@ Usage:
   python3 make_queries.py [--workdir ~/Zotero/scix-work] [--round 1|2]
 """
 import argparse
+import datetime
 import json
 import os
 
@@ -95,7 +96,9 @@ def main():
     if carry:
         print(f'前回の queries.json から、結果がまだない {len(carry)} 件を引き継ぎました')
     out = os.path.join(a.workdir, 'queries.json')
-    json.dump({'fl': FL, 'queries': qs}, open(out, 'w', encoding='utf-8'))
+    # generated: 2_query.js はこれが変わると（作り直したら）全クエリを実行し直す。前回の結果を使い回さないため
+    generated = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    json.dump({'fl': FL, 'generated': generated, 'queries': qs}, open(out, 'w', encoding='utf-8'))
     print(f'{len(qs)} queries -> {out}')
 
 
