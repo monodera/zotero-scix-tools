@@ -16,6 +16,7 @@ Usage:
   python3 make_queries.py [--workdir ~/Zotero/scix-work] [--round 1|2]
 """
 import argparse
+import datetime
 import json
 import os
 
@@ -73,7 +74,7 @@ def main():
         res = json.load(open(rp, encoding='utf-8'))
         for k, r in res.items():
             s = D.snap[k]
-            if r['method'] == 'title2' and not is_pub(D.docs[r['bib']]) and D.qr.get(k + '|P') is None:
+            if r['method'] == 'title2' and not is_pub(D.docs[r['bib']]) and not D.fetched(k + '|P'):
                 # 追加検索（A〜D）で e-print にだけ一致した場合も、出版版を探す
                 pub_query(k, s, D.docs[r['bib']])
                 continue
@@ -95,7 +96,9 @@ def main():
     if carry:
         print(f'前回の queries.json から、結果がまだない {len(carry)} 件を引き継ぎました')
     out = os.path.join(a.workdir, 'queries.json')
-    json.dump({'fl': FL, 'queries': qs}, open(out, 'w', encoding='utf-8'))
+    # generated: 2_query.js はこれが変わると（作り直したら）全クエリを実行し直す。前回の結果を使い回さないため
+    generated = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    json.dump({'fl': FL, 'generated': generated, 'queries': qs}, open(out, 'w', encoding='utf-8'))
     print(f'{len(qs)} queries -> {out}')
 
 
