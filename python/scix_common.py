@@ -41,13 +41,18 @@ class Data:
         #   qr_missing: エラー・未実行（2_query.js の再実行で取得できる見込み）
         #   qr_failed:  4xx（再実行しても失敗する可能性が高い）
         self.qr_missing, self.qr_failed = [], []
+        self.qr_fetched_in, self.qr_batch = fetched_in, None
         qj = os.path.join(workdir, 'queries.json')
         if os.path.exists(qj):
             qd = json.load(open(qj, encoding='utf-8'))
-            batch = qd.get('generated')
+            self.qr_batch = qd.get('generated')
             for q in qd.get('queries', []):
-                if self.qr.get(q['id']) is None or (batch and fetched_in.get(q['id']) != batch):
+                if not self.fetched(q['id']):
                     (self.qr_failed if q['id'] in qr_4xx else self.qr_missing).append(q)
+
+    def fetched(self, qid):
+        """query-results.json に、今の queries.json で取得した結果がある（作り直す前の古い結果は除く）"""
+        return self.qr.get(qid) is not None and (not self.qr_batch or self.qr_fetched_in.get(qid) == self.qr_batch)
 
 
 # ---------------- text helpers ----------------

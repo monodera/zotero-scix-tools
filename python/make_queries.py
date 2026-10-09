@@ -74,7 +74,7 @@ def main():
         res = json.load(open(rp, encoding='utf-8'))
         for k, r in res.items():
             s = D.snap[k]
-            if r['method'] == 'title2' and not is_pub(D.docs[r['bib']]) and D.qr.get(k + '|P') is None:
+            if r['method'] == 'title2' and not is_pub(D.docs[r['bib']]) and not D.fetched(k + '|P'):
                 # 追加検索（A〜D）で e-print にだけ一致した場合も、出版版を探す
                 pub_query(k, s, D.docs[r['bib']])
                 continue

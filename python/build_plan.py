@@ -248,7 +248,10 @@ def main():
             REVIEW['同じタイトルだが識別子が異なる（マージしない）'].append(ks)
 
     # ---------- 3. operations ----------
-    OPS = [{'id': 'merge:' + m['master'], 'op': 'merge', 'master': m['master'], 'others': m['others']} for m in MERGES]
+    # ID にマージ元も含める。以前マージした master に後から新しい重複が加わったとき、記録済みの merge と区別するため
+    # （マージ済みのアイテムはゴミ箱にあってスナップショットに出ないので、同じグループが再計画されることはない）
+    OPS = [{'id': 'merge:' + m['master'] + '@' + '+'.join(sorted(m['others'])), 'op': 'merge',
+            'master': m['master'], 'others': m['others']} for m in MERGES]
     MASTER_OF = {m['master']: m['others'] for m in MERGES}
     STATS = collections.Counter()
     MDOI = {}   # manual.json で指定した DOI（PDF の一覧でも SciX の DOI より優先する）
