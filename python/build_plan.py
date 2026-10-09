@@ -283,6 +283,11 @@ def main():
                 REVIEW['リンクを付けられないアイテム（手作業で）'].append((k, None, None))
             continue
         pub, doi = is_pub(d), pub_doi(d)
+        # 前回の適用時と違うレコードに一致した（e-print → 出版版、manual.json での修正など）なら、apply-log.jsonl に
+        # 記録済みの操作と区別するため、ID に bibcode を付けて新しい操作にする。前回の bibcode は 3_apply.js が
+        # Extra に書いた「Bibcode: …」（マージで複数になりうる）。照合結果が同じなら ID は従来どおり
+        prev = set(re.findall(r'^\s*Bibcode:\s*(\S+)', s['extra'] or '', re.M))
+        sfx = '@' + b if prev and b not in prev else ''
         fields, set_type, tags = {}, None, []
         if pub:
             target = TYPE_MAP.get(d.get('doctype'))
@@ -324,15 +329,15 @@ def main():
         if mdoi and fields.get('url', '').startswith('https://doi.org/'):
             fields['url'] = 'https://doi.org/' + mdoi
         fields.update(mf)
-        upd = {'id': 'upd:' + k, 'op': 'update', 'key': k, 'fields': {kk: v for kk, v in fields.items() if v},
+        upd = {'id': 'upd:' + k + sfx, 'op': 'update', 'key': k, 'fields': {kk: v for kk, v in fields.items() if v},
                'extraLines': ['Bibcode: ' + b] + ([f'arXiv: {axs[0]}'] if axs else []), 'tags': tags}
         if set_type:
             upd['setType'] = set_type
         OPS.append(upd)
-        OPS.append({'id': 'link:scix:' + k, 'op': 'link', 'key': k, 'title': 'NASA SciX', 'url': scix_url(b)})
+        OPS.append({'id': 'link:scix:' + k + sfx, 'op': 'link', 'key': k, 'title': 'NASA SciX', 'url': scix_url(b)})
         pd = mdoi or doi or (s['ids']['doi'][0] if s['ids']['doi'] and not pub else None)
         if pd:
-            OPS.append({'id': 'link:pub:' + k, 'op': 'link', 'key': k, 'title': 'Publisher', 'url': 'https://doi.org/' + pd})
+            OPS.append({'id': 'link:pub:' + k + sfx, 'op': 'link', 'key': k, 'title': 'Publisher', 'url': 'https://doi.org/' + pd})
         STATS['SciX一致（出版版）' if pub else 'SciX一致（arXivのみ）'] += 1
     for k, links in MANUAL.get('links', {}).items():
         for i, l in enumerate(links):

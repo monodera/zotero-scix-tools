@@ -111,6 +111,7 @@ The scripts tell an arXiv PDF from a publisher PDF by the arXiv stamp on pages 1
 
 - The SciX API allows 5,000 requests per day. The scripts report how many remain.
 - Do not edit the affected items while applying. Items whose URL changed after planning are skipped.
+- You can rerun the whole pipeline periodically (for example, for papers you add from arXiv). Steps already applied are skipped, and an item that SciX now matches to a different record than last time — typically an arXiv e-print that has since been published — is updated to the new record.
 - To roll back, quit Zotero and put a file from `scix-work/backup/` back as `zotero.sqlite`. If you use Zotero sync, mind the server-side state.
 - Use at your own risk.
 
