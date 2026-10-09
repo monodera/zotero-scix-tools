@@ -31,14 +31,16 @@ async function pageText(att) {
   return null;
 }
 async function classify(att) {
-  if (/arxiv\.org/i.test(att.getField('url') || '')) return 'arxiv';
+  // URL のホストが arxiv.org（またはそのサブドメイン）のときだけ arXiv 版とみなす
+  if (/^https?:\/\/([a-z0-9-]+\.)*arxiv\.org(?:[:\/?#]|$)/i.test(att.getField('url') || '')) return 'arxiv';
   if (!(await att.fileExists())) return 'unknown';
   const t = await pageText(att);
   if (t == null || t.trim().length < 200) return 'unknown';
   return isArxivText(t) ? 'arxiv' : 'published';
 }
 const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const csvq = s => '"' + String(s || '').replace(/"/g, '""') + '"';
+// = + - @ などで始まるセルは表計算ソフトが数式として扱うので、先頭に ' を付けて文字列にする
+const csvq = s => { s = String(s || ''); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
 
 const rows = []; const cnt = { needs: 0, hasPublished: 0, gone: 0, unknownOnly: 0 };
 for (let i = 0; i < plan.pdf.length; i++) {

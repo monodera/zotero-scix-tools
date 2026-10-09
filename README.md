@@ -6,7 +6,7 @@ These scripts clean up an astronomy-heavy Zotero library by matching it against 
 
 ## What it does
 
-- **Merges duplicates.** Items that share an arXiv ID, a DOI or a SciX bibcode are merged, including arXiv-preprint / published-version pairs. Items that only have similar titles are listed for review, not merged.
+- **Merges duplicates.** Items that share an arXiv ID, a DOI or a SciX bibcode are merged, including arXiv-preprint / published-version pairs. If the titles differ a lot, the items are merged only when the first author also matches and they share an arXiv ID or match the same SciX record by an identifier; otherwise they are listed for review. Items that only have similar titles are listed for review, not merged.
 - **Updates arXiv papers to the published version.** The item type becomes Journal Article or Conference Paper, and the journal, volume, issue, pages, date, DOI and title come from the published record. The arXiv ID is kept in Extra.
 - **Adds links.** Each matched item gets a "NASA SciX" link attachment and a "Publisher" link attachment (doi.org).
 - **Replaces ADS links with SciX links.** This covers the URL field, attachment URLs and notes.
@@ -18,7 +18,7 @@ Items that are not in SciX get a Publisher link if they have a DOI. Anything lef
 ## Design
 
 - **Everything runs inside Zotero** through *Tools → Developer → Run JavaScript*. You do not need to quit Zotero, and the changes sync like ordinary edits.
-- **Plan first, then apply.** The pipeline runs match (read-only) → build plan (Python) → human review → apply. Applying supports a dry run, resumes after an interruption, and takes a database backup right before the first real run.
+- **Plan first, then apply.** The pipeline runs match (read-only) → build plan (Python) → human review → apply. Applying supports a dry run, resumes after an interruption, and takes a database backup right before every real run.
 - **No automated publisher downloads.** Major publishers (IOP/AAS, OUP, EDP, …) block automated access with bot management. Working around that breaches typical subscription terms and can get your whole institution's access suspended. Fetch publisher PDFs in your normal browser with Zotero Connector. For bulk access, ask your library about the publisher's text-and-data-mining (TDM) channel.
 
 ## Requirements
@@ -64,7 +64,9 @@ Settings are in the `CFG` block at the top of each script.
 
 ```bash
 mkdir -p ~/Zotero/scix-work
-printf '%s' 'YOUR_SCIX_TOKEN' > ~/Zotero/scix-work/ads_token.txt
+read -rs SCIX_TOKEN   # paste the token and press Enter (it is not echoed or saved in shell history)
+(umask 077; printf '%s' "$SCIX_TOKEN" > ~/Zotero/scix-work/ads_token.txt)   # readable only by you
+unset SCIX_TOKEN
 ```
 
 ### 1. Match (read-only)
@@ -93,7 +95,7 @@ Open `~/Zotero/scix-work/review.html`. The item keys in it are `zotero://` links
 ### 3. Apply
 
 1. Run `3_apply.js` with `dryRun: true`. Details go to `dryrun-report.json`.
-2. Run it with `dryRun: false, limit: 5, only: ['merge']` and check the merges in Zotero. The first real run, when `apply-log.jsonl` does not exist yet, writes a backup to `scix-work/backup/`.
+2. Run it with `dryRun: false, limit: 5, only: ['merge']` and check the merges in Zotero. Every real run that has operations left to apply first writes a backup of the database to `scix-work/backup/`. Old backups are never deleted automatically, so remove the ones you no longer need by hand (keep the oldest one, taken before the first real run, until you are sure you will not start over).
 3. Run it with `limit: 0, only: null`. Operations that already ran are skipped (see `apply-log.jsonl`).
 
 Updated items are tagged `_scix:published-update`. Delete the tag once you have reviewed them.
@@ -103,20 +105,20 @@ Updated items are tagged `_scix:published-update`. Delete the tag once you have 
 1. Run `4_trash_arxiv_pdf.js` as a dry run, then for real.
 2. Run `5_needs_list.js`. It tags items without a publisher PDF as `_scix:needs-pub-pdf` and writes `needs-pub-pdf.html` / `.csv`. It has no dry run: it only adds and removes this tag, and rerunning it updates the tags to the current state.
 3. Open the DOI links in the list and save each paper with Zotero Connector. Each one becomes a new item.
-4. Run `6_absorb.js`, dry run first. It merges the new items into the existing ones by DOI and trashes the arXiv PDF.
+4. Run `6_absorb.js`, dry run first. It merges the new items into the existing ones by DOI (skipping those whose titles differ a lot) and trashes the arXiv PDF.
 
 The scripts tell an arXiv PDF from a publisher PDF by the arXiv stamp on pages 1–2 (`arXiv:XXXX.XXXXXvN [astro-ph…]`). PDFs they cannot classify, such as image-only scans, are left alone. If your PDFs are linked files, emptying the trash does not delete them from disk.
 
 ## After the first clean-up
 
-There are three kinds of follow-up work. Before any of them changes your library, quit Zotero and back up `zotero.sqlite`: `3_apply.js` makes its own backup only on its very first real run, when `apply-log.jsonl` does not exist yet. Always paste the scripts from the current version of this repository, not copies kept elsewhere.
+There are three kinds of follow-up work. Before any of them changes your library, quit Zotero and back up `zotero.sqlite`: `3_apply.js` makes its own backup before each real run, but `4_trash_arxiv_pdf.js`, `5_needs_list.js` and `6_absorb.js` do not. Always paste the scripts from the current version of this repository, not copies kept elsewhere.
 
 ### A. Publisher PDFs for papers already in your library
 
 Do this whenever you have saved publisher versions with Zotero Connector. It needs none of the other steps and makes no SciX requests.
 
 1. Open `~/Zotero/scix-work/needs-pub-pdf.html` (made by `5_needs_list.js`) and save the papers from their DOI links with Zotero Connector. Each one becomes a new item.
-2. Run `6_absorb.js`, dry run first. It merges each new item into the existing item with the same DOI and, once a publisher PDF is attached, trashes the arXiv PDF (annotated PDFs are kept).
+2. Run `6_absorb.js`, dry run first. It merges each new item into the existing item with the same DOI and, once a publisher PDF is attached, trashes the arXiv PDF (annotated PDFs are kept). A new item whose title differs a lot from the existing one is not merged and is listed as `SKIP`, because the DOI may be wrong or shared by a whole proceedings volume.
    - Items added within the last `days` days (`CFG`, 7 by default) count as the newly saved ones. If you saved them longer ago, raise `days`. An item added within that window is never used as the existing one.
    - The existing item needs the publisher DOI in its DOI field. The items in the list normally do.
    - If two or more existing items have the same DOI, they are skipped (`SKIP(既存が複数)`). Merge those duplicates first, with B or by hand.

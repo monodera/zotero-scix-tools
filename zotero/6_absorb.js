@@ -3,6 +3,7 @@
 //
 // 6_absorb.js — Zotero Connector で保存した出版版を既存アイテムに統合する
 //   1. 直近 CFG.days 日に追加されたアイテムのうち、DOI が既存（より古い）アイテムと一致するものを探す
+//      タイトルが大きく異なるもの（類似度 0.5 未満）は、DOI の誤記などとみなして統合しない（SKIP として表示）
 //   2. 既存アイテムを残して統合（新アイテムのPDF・スナップショットは既存アイテムへ移る。メタデータは既存側を維持）
 //   3. 既存アイテムに出版版PDFがあれば、arXiv版PDFをゴミ箱へ（注釈があるものは残す）
 //      タグ _scix:needs-pub-pdf を外し、_scix:pdf-published を付ける
@@ -37,7 +38,8 @@ async function pageText(att) {
   return null;
 }
 async function classify(att) {
-  if (/arxiv\.org/i.test(att.getField('url') || '')) return 'arxiv';
+  // URL のホストが arxiv.org（またはそのサブドメイン）のときだけ arXiv 版とみなす
+  if (/^https?:\/\/([a-z0-9-]+\.)*arxiv\.org(?:[:\/?#]|$)/i.test(att.getField('url') || '')) return 'arxiv';
   if (!(await att.fileExists())) return 'unknown';
   const t = await pageText(att);
   if (t == null || t.trim().length < 200) return 'unknown';
@@ -59,6 +61,56 @@ async function hasAnnotations(att) {
 }
 const normDoi = d => (d || '').trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//, '');
 
+// タイトル類似度（python/scix_common.py の tsim と同じ：文字列の一致率 difflib.SequenceMatcher.ratio と単語の Jaccard の大きい方）
+function plainTitle(t) {
+  const ent = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+  t = String(t || '').replace(/&(?:#(\d+)|#x([0-9a-f]+)|(amp|lt|gt|quot|apos));/gi, (m, d, h, n) => {
+    const c = d ? +d : h ? parseInt(h, 16) : null;
+    return c == null ? ent[n.toLowerCase()] : c <= 0x10FFFF ? String.fromCodePoint(c) : m;
+  });
+  t = t.replace(/<[^>]+>/g, ' ').replace(/\$[^$]*\$/g, ' ').replace(/\\[a-zA-Z]+/g, ' ');
+  return t.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+const normTitle = t => (plainTitle(t).match(/[a-z0-9]+/g) || []).join(' ');
+function seqRatio(a, b) {
+  const b2j = new Map();
+  for (let j = 0; j < b.length; j++) { if (!b2j.has(b[j])) b2j.set(b[j], []); b2j.get(b[j]).push(j); }
+  // difflib の autojunk: b が200文字以上なら、出現回数が 1% + 1 を超える文字を索引から除く
+  if (b.length >= 200) { const ntest = Math.floor(b.length / 100) + 1; for (const [c, js] of b2j) if (js.length > ntest) b2j.delete(c); }
+  let matched = 0;
+  const queue = [[0, a.length, 0, b.length]];
+  while (queue.length) {
+    const [alo, ahi, blo, bhi] = queue.pop();
+    let bi = alo, bj = blo, bk = 0, j2len = new Map();
+    for (let i = alo; i < ahi; i++) {
+      const nj = new Map();
+      for (const j of b2j.get(a[i]) || []) {
+        if (j < blo) continue;
+        if (j >= bhi) break;
+        const k = (j2len.get(j - 1) || 0) + 1;
+        nj.set(j, k);
+        if (k > bk) { bi = i - k + 1; bj = j - k + 1; bk = k; }
+      }
+      j2len = nj;
+    }
+    // 索引から除いた文字で、見つかった一致を前後に延ばす（difflib と同じ）
+    while (bi > alo && bj > blo && a[bi - 1] === b[bj - 1]) { bi--; bj--; bk++; }
+    while (bi + bk < ahi && bj + bk < bhi && a[bi + bk] === b[bj + bk]) bk++;
+    if (!bk) continue;
+    matched += bk;
+    if (alo < bi && blo < bj) queue.push([alo, bi, blo, bj]);
+    if (bi + bk < ahi && bj + bk < bhi) queue.push([bi + bk, ahi, bj + bk, bhi]);
+  }
+  return 2 * matched / (a.length + b.length);
+}
+function tsim(a, b) {
+  a = normTitle(a); b = normTitle(b);
+  if (!a || !b) return 0;
+  const wa = new Set(a.split(' ')), wb = new Set(b.split(' '));
+  const inter = [...wa].filter(w => wb.has(w)).length;
+  return Math.max(seqRatio(a, b), inter / Math.max(1, new Set([...wa, ...wb]).size));
+}
+
 // 全アイテムの DOI 索引
 const all = (await Zotero.Items.getAll(LIB, true, false)).filter(i => i.isRegularItem());
 const byDoi = new Map();
@@ -71,7 +123,7 @@ for (const it of all) {
 const since = Date.now() - CFG.days * 86400e3;
 const added = it => Zotero.Date.sqlToDate(it.dateAdded, true).getTime();
 
-const res = { merged: 0, pdfPublished: 0, stillNeeds: 0, skipped: 0 };
+const res = { merged: 0, pdfPublished: 0, stillNeeds: 0, skipped: 0, titleMismatch: 0 };
 const lines = [];
 for (const [doi, items] of byDoi) {
   if (items.length < 2) continue;
@@ -80,10 +132,19 @@ for (const [doi, items] of byDoi) {
   if (!fresh.length || !old.length) continue;
   if (old.length > 1) { res.skipped++; lines.push('SKIP(既存が複数) ' + doi); continue; }
   const master = old[0];
-  lines.push(`${master.getField('title').slice(0, 70)}  ←  新規${fresh.length}件`);
-  if (CFG.dryRun) { await log({ doi, master: master.key, fresh: fresh.map(f => f.key) }); continue; }
-  await Zotero.Items.merge(master, fresh);
-  res.merged += fresh.length;
+  const mt = master.getField('title');
+  // DOI は予稿集全体で共有されたり誤記されたりするので、タイトルも似ているものだけを統合する（build_plan.py と同じ基準）
+  const ok = [], mismatch = [];
+  for (const f of fresh) (tsim(mt, f.getField('title')) >= 0.5 ? ok : mismatch).push(f);
+  for (const f of mismatch) {
+    res.titleMismatch++;
+    lines.push(`SKIP(タイトルが大きく異なる) ${doi}\n    既存 ${master.key}: ${mt.slice(0, 70)}\n    新規 ${f.key}: ${f.getField('title').slice(0, 70)}`);
+  }
+  if (!ok.length) { await log({ doi, master: master.key, mismatch: mismatch.map(f => f.key) }); continue; }
+  lines.push(`${mt.slice(0, 70)}  ←  新規${ok.length}件` + ok.map(f => `\n    ← ${f.getField('title').slice(0, 70)}`).join(''));
+  if (CFG.dryRun) { await log({ doi, master: master.key, fresh: ok.map(f => f.key), mismatch: mismatch.map(f => f.key) }); continue; }
+  await Zotero.Items.merge(master, ok);
+  res.merged += ok.length;
   // PDF 判定
   const kids = Zotero.Items.get(master.getAttachments(false)).filter(a => a.isPDFAttachment());
   const cls = []; for (const a of kids) cls.push([a, await classify(a)]);
@@ -97,6 +158,6 @@ for (const [doi, items] of byDoi) {
     master.removeTag('_scix:needs-pub-pdf'); master.addTag('_scix:pdf-published');
   } else res.stillNeeds++;
   await master.saveTx();
-  await log({ doi, master: master.key, fresh: fresh.map(f => f.key), kids: cls.map(([a, c]) => a.key + ':' + c) });
+  await log({ doi, master: master.key, fresh: ok.map(f => f.key), mismatch: mismatch.map(f => f.key), kids: cls.map(([a, c]) => a.key + ':' + c) });
 }
 return (CFG.dryRun ? '[DRY-RUN] 統合予定:\n' : '') + lines.slice(0, 50).join('\n') + (lines.length > 50 ? `\n…他${lines.length - 50}件` : '') + '\n' + JSON.stringify(res);

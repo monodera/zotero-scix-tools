@@ -12,7 +12,11 @@ const CFG = { token: '', api: 'https://api.adsabs.harvard.edu/v1/search/query', 
 
 const DIR = PathUtils.join(Zotero.DataDirectory.dir, 'scix-work');
 let TOKEN = CFG.token.trim();
-if (!TOKEN) TOKEN = (await Zotero.File.getContentsAsync(PathUtils.join(DIR, 'ads_token.txt'))).trim();
+if (!TOKEN) {
+  const tp = PathUtils.join(DIR, 'ads_token.txt');
+  if (await IOUtils.exists(tp)) TOKEN = (await Zotero.File.getContentsAsync(tp)).trim();
+}
+if (!TOKEN) return 'ERROR: APIトークンが未設定です（CFG.token または scix-work/ads_token.txt）';
 const input = JSON.parse(await Zotero.File.getContentsAsync(PathUtils.join(DIR, 'queries.json')));
 const OUT = PathUtils.join(DIR, 'query-results.json');
 const win = Zotero.getMainWindow();

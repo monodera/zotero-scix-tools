@@ -1,5 +1,5 @@
 // =====================================================================
-// Step 4: apply scix-work/plan.json (merge duplicates, update to published metadata, add SciX/Publisher links, replace ADS links). Dry-run first; resumable; makes a DB backup on the first real run.
+// Step 4: apply scix-work/plan.json (merge duplicates, update to published metadata, add SciX/Publisher links, replace ADS links). Dry-run first; resumable; makes a DB backup before every real run that has ops to apply.
 //
 // 3_apply.js — 計画ファイル(plan.json)をライブラリに適用
 //   ・重複マージ / 出版版メタデータへの更新 / SciX・Publisher リンク追加
@@ -41,7 +41,7 @@ async function log(rec) {
 }
 const report = [];
 
-// ---------- 自動バックアップ（初回の本実行時のみ。VACUUM INTO で整合性のあるコピーを作成） ----------
+// ---------- 自動バックアップ（未適用の op がある本実行のたびに。VACUUM INTO で整合性のあるコピーを作成） ----------
 async function backupDB(tag) {
   const bdir = PathUtils.join(DIR, 'backup');
   await IOUtils.makeDirectory(bdir, { ignoreExisting: true });
@@ -55,9 +55,6 @@ async function backupDB(tag) {
   if (!(await IOUtils.exists(dst))) throw new Error('バックアップ作成に失敗しました: ' + dst);
   return dst;
 }
-
-let BACKUP = null;
-if (!CFG.dryRun && !(await IOUtils.exists(LOG))) BACKUP = await backupDB('pre-apply');
 
 
 let pw = null, pline = null;
@@ -191,6 +188,12 @@ const H = {
 // ---------------- run ----------------
 let ops = plan.ops.filter(o => !done.has(o.id) && (!CFG.only || CFG.only.includes(o.op)));
 if (CFG.limit) ops = ops.slice(0, CFG.limit);
+// 古いバックアップは自動では消さない（不要になったものは scix-work/backup/ から手で削除する）
+let BACKUP = null;
+if (!CFG.dryRun && ops.length) {
+  try { BACKUP = await backupDB('pre-apply'); }
+  catch (e) { try { pw.close(); } catch (e2) {} throw e; }
+}
 const cnt = {};
 for (let i = 0; i < ops.length; i++) {
   const op = ops[i];
@@ -207,4 +210,4 @@ for (let i = 0; i < ops.length; i++) {
 }
 if (CFG.dryRun) await Zotero.File.putContentsAsync(PathUtils.join(DIR, 'dryrun-report.json'), JSON.stringify(report, null, 1));
 progress('done'); try { pw.startCloseTimer(8000); } catch (e) {}
-return (BACKUP ? `backup: ${BACKUP}\n` : '') + (CFG.dryRun ? '[DRY-RUN] ' : '') + `処理 ${ops.length} ops（実行済みスキップ ${done.size}）\n` + JSON.stringify(cnt, null, 1);
+return (BACKUP ? `backup: ${BACKUP}\n（古いバックアップは自動では削除しません。不要なものは scix-work/backup/ から手で削除してください）\n` : '') + (CFG.dryRun ? '[DRY-RUN] ' : '') + `処理 ${ops.length} ops（実行済みスキップ ${done.size}）\n` + JSON.stringify(cnt, null, 1);

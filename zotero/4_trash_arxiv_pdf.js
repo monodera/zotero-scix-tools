@@ -38,7 +38,8 @@ async function pageText(att) {
   return null;
 }
 async function classify(att) {
-  if (/arxiv\.org/i.test(att.getField('url') || '')) return 'arxiv';
+  // URL のホストが arxiv.org（またはそのサブドメイン）のときだけ arXiv 版とみなす
+  if (/^https?:\/\/([a-z0-9-]+\.)*arxiv\.org(?:[:\/?#]|$)/i.test(att.getField('url') || '')) return 'arxiv';
   if (!(await att.fileExists())) return 'unknown';
   const t = await pageText(att);
   if (t == null || t.trim().length < 200) return 'unknown';
